@@ -132,14 +132,14 @@
     const backupSection = exportButton.closest('.settings-section');
     const actions = dialog.querySelector('.dialog-actions');
 
-    clientInput.readOnly = true;
-    folderInput.readOnly = true;
-    clientInput.tabIndex = -1;
-    folderInput.tabIndex = -1;
+    clientInput.readOnly = false;
+    folderInput.readOnly = false;
+    clientInput.tabIndex = 0;
+    folderInput.tabIndex = 0;
     clientInput.autocomplete = 'off';
     folderInput.autocomplete = 'off';
 
-    if (saveButton) saveButton.classList.add('hidden');
+    if (saveButton) saveButton.classList.remove('hidden');
     const closeButton = actions?.querySelector('button[value="cancel"]');
     if (closeButton) closeButton.textContent = 'Close';
 
@@ -164,7 +164,7 @@
     driveSection.innerHTML = `
       <div class="settings-section-title">Google Drive</div>
       <div class="settings-row"><span class="settings-row-label">MUSIC folder</span><span id="settingsDriveStatus" class="settings-row-value">Configured</span></div>
-      <p class="help settings-note">Drive setup is fixed for this personal app. Authorization is requested only when needed.</p>
+      <p class="help settings-note">Enter your Drive connection in Advanced setup, then Save. Authorization is requested only when needed.</p>
     `;
 
     const advanced = document.createElement('details');
@@ -175,7 +175,7 @@
     if (clientField) advanced.appendChild(clientField);
     if (folderField) advanced.appendChild(folderField);
     if (originalHelp) {
-      originalHelp.textContent = 'Read-only app configuration. These values are kept here for troubleshooting only.';
+      originalHelp.textContent = 'These settings stay on this device. Save, then tap Refresh to connect your private library.';
       advanced.appendChild(originalHelp);
     }
 
@@ -244,7 +244,7 @@
         const label = (statusLabel?.textContent || '').toLowerCase();
         if (!navigator.onLine) driveValue.textContent = 'Offline';
         else if (label.includes('google drive connected')) driveValue.textContent = 'Connected';
-        else driveValue.textContent = 'Configured';
+        else driveValue.textContent = clientInput.value.trim() && folderInput.value.trim() ? 'Configured' : 'Setup required';
       }
     }
 

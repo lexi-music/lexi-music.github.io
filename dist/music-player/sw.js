@@ -1,7 +1,7 @@
 importScripts('./offline-audio.js?v=1');
 const CACHE_PREFIX = 'music-shell-';
-const CACHE = 'music-shell-v92-lexi-5';
-const SHELL = ['./full-test-loader.js?v=3', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=2', './offline-audio.js?v=1', './playback-diagnostics.js?v=4', './', './styles.css?v=20', './app-player.js?v=8', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=2', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
+const CACHE = 'music-shell-v92-lexi-6';
+const SHELL = ['./full-test-loader.js?v=3', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=2', './offline-audio.js?v=1', './playback-diagnostics.js?v=4', './', './styles.css?v=20', './app-player.js?v=8', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=3', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
 function navigationResponse(response) {
   if (!response.redirected) return response;
   const headers = new Headers(response.headers);
@@ -18,8 +18,8 @@ const ALIASES = {
   'app-player.js': './app-player.js?v=8',
   'audio-storage-player.js': './audio-storage-player.js?v=1',
   'playback-prefetch.js': './playback-prefetch.js',
-  'player-settings.js': './player-settings.js?v=2',
-  'player-ui.js': './player-settings.js?v=2',
+  'player-settings.js': './player-settings.js?v=3',
+  'player-ui.js': './player-settings.js?v=3',
   'playlist-enhancements.js': './playlist-enhancements.js?v=7',
   'media-session-controls.js': './media-session-controls.js?v=5',
   'media-session-controls-v6.js': './media-session-controls-v6.js',
