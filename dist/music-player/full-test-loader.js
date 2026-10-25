@@ -5,7 +5,6 @@
   const reserved=document.createElement('script');reserved.type='application/json';reserved.dataset.playlistEnhancements='reserved';document.body.append(reserved);
   for(const src of scripts)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;if(src.startsWith('playlist-'))s.dataset.playlistEnhancements='1';if(src.startsWith('app-player'))s.dataset.lexiMusicPlayer='1';s.onload=resolve;s.onerror=()=>reject(Error('Could not load player'));document.body.append(s)});
   reserved.remove();
-  const hint=document.createElement('p');hint.textContent='Refresh updates your Drive library. Download songs to listen offline.';hint.style.cssText='font-size:12px;color:#aaa;margin:8px 14px';document.getElementById('statusCard')?.after(hint);
   document.querySelector('.tab[data-view="ALL"]')?.click();
  }catch(error){document.getElementById('statusDetail').textContent=error.message+' · reopen online';}
 })();

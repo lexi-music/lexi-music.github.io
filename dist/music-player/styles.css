@@ -66,8 +66,9 @@ h2 { font-size: 18px; margin: 0 0 3px; }
 .select-glyph { display: none; font-size: 20px; line-height: 1; }
 .track-row.playing .track-index { display: none; }
 .track-row.playing .play-glyph { display: inline; color: var(--text); }
-.track-row.selecting .track-index, .track-row.selecting .play-glyph { display: none; }
-.track-row.selecting .select-glyph { display: inline; color: var(--text); }
+.track-row.selecting .track-index { display: inline; min-width: 14px; text-align: center; }
+.track-row.selecting .play-glyph { display: none; }
+.track-row.selecting .select-glyph { display: inline; color: var(--text); font-size: 18px; }
 .track-row.selecting .track-menu, .track-row.selecting .track-favorite { visibility: hidden; }
 .track-body { min-width: 0; padding: 4px 6px; text-align: left; }
 .track-title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 560; }
@@ -334,3 +335,12 @@ h2 { font-size: 15.5px; margin: 0 0 2px; letter-spacing: -.01em; }
 .player-action.active {
   border-color: rgba(197,154,168,.28);
 }
+
+/* Keep playlist membership numbers visible alongside selection controls. */
+.track-row.selecting { grid-template-columns: 46px minmax(0,1fr) 28px 29px 18px; }
+.track-row.selecting .track-play {
+  display: flex; align-items: center; justify-content: space-between; gap: 3px; padding: 0 4px 0 0;
+}
+.topbar .brand { flex-direction: column; align-items: flex-start; gap: 2px; }
+.brand-lexi { font-size: 7px; font-weight: 500; line-height: 1; letter-spacing: .18em; color: var(--muted); }
+.brand-music { font-size: 19px; font-weight: 700; line-height: 1.05; }
