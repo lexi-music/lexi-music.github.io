@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0b0c">
+  <title>LEXI Music · Startup repair</title>
+</head>
+<body style="background:#0b0b0c;color:#eee;font:16px system-ui;max-width:480px;margin:64px auto;padding:20px">
+  <h1>LEXI Music</h1>
+  <p id="status" role="status">Updating the app’s startup files…</p>
+  <p>Your downloaded songs, playlists and settings stay in place.</p>
+  <a href="/music-player/" style="color:#c9e7ac">Open LEXI Music</a>
+  <script>
+    (async () => {
+      const status = document.getElementById('status');
+      try {
+        if (!('serviceWorker' in navigator)) throw Error('Open LEXI Music using the link below.');
+        for (const [script, scope] of [['/sw.js', '/'], ['/music-player/sw.js', '/music-player/']]) {
+          const registration = await navigator.serviceWorker.register(script, {scope, updateViaCache:'none'});
+          await registration.update();
+          const worker = registration.installing || registration.waiting || registration.active;
+          if (!worker) throw Error('Startup update unavailable. Reopen this page while online.');
+          if (worker.state !== 'activated') await new Promise((resolve, reject) => {
+            const timer = setTimeout(() => reject(Error('Update is taking longer than expected. Reopen this page online.')), 20000);
+            const check = () => {
+              if (worker.state === 'activated') {clearTimeout(timer); worker.removeEventListener('statechange', check); resolve();}
+              if (worker.state === 'redundant') {clearTimeout(timer); worker.removeEventListener('statechange', check); reject(Error('Startup update failed. Reopen this page online.'));}
+            };
+            worker.addEventListener('statechange', check); check();
+          });
+        }
+        status.textContent = 'Startup updated. Opening your music…';
+        location.replace('/music-player/');
+      } catch (error) { status.textContent = error.message; }
+    })();
+  </script>
+</body>
+</html>
