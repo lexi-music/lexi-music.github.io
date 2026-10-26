@@ -977,12 +977,31 @@
   }
 
   async function resumePlayback() {
+    // A system Play action must not replace an in-flight skip with the old track.
+    if (playbackLoading) return;
     if (!currentTrackId || !els.audio.src) return playTrack(currentTrackId || library[0]?.id, !!currentTrackId);
     if (els.audio.readyState < 3 || els.audio.error) return playTrack(currentTrackId, true);
+    const generation = playbackGeneration;
     wantsPlayback = true;
+    playbackLoading = true;
+    pendingTrackId = currentTrackId;
     claimPlaybackSession();
-    try { await els.audio.play(); }
-    catch (error) { setStatus('Playback could not resume', error.message); }
+    try {
+      await els.audio.play();
+      if (generation !== playbackGeneration) return;
+      warmNextTrack();
+    } catch (error) {
+      if (generation !== playbackGeneration) return;
+      wantsPlayback = false;
+      setStatus('Playback could not resume', error.message);
+    } finally {
+      // A late native play result must not overwrite a newer pause or skip.
+      if (generation === playbackGeneration) {
+        playbackLoading = false;
+        pendingTrackId = null;
+        updatePlayButton();
+      }
+    }
   }
 
   function togglePlayback() {

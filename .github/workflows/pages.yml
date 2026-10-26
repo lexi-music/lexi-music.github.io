@@ -21,6 +21,8 @@ jobs:
         run: node tests/navigation-redirect.cjs
       - name: Verify library preservation and accepted playback modules
         run: node tests/drive-enable.cjs
+      - name: Verify play, pause and skip transitions
+        run: node tests/playback-transitions.cjs
       - name: Check JavaScript syntax
         run: find dist -name '*.js' -print0 | xargs -0 -n1 node --check
   deploy:
