@@ -186,5 +186,14 @@ function harness({ nativeClock = false } = {}) {
     assert.equal(h.player.state().pendingTrackId, null);
     assert.equal(h.player.state().playbackLoading, false);
   }
+  {
+    const h = harness({ nativeClock:true }), read = deferred();
+    const resume = h.actions.play(); await flush();
+    h.player.source(() => read.promise);
+    const skip = h.actions.nexttrack(); await resume;
+    assert.equal(h.audio.paused, true, 'A superseded native handoff must be cancelled before another source read');
+    h.actions.pause(); await skip;
+    assert.equal(h.player.state().wantsPlayback, false);
+  }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });

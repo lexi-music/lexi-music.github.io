@@ -1053,7 +1053,11 @@
       const advanced = () => !els.audio.paused && els.audio.currentTime > initialTime + 0.05;
       const progress = () => { if (advanced()) finish(); };
       const failed = () => finish(new Error('The audio could not be played. Tap Play to retry.'));
-      const aborted = () => finish(new DOMException('Playback cancelled', 'AbortError'));
+      const aborted = () => {
+        // Settle the native deck as well as this promise before a newer skip.
+        els.audio.pause();
+        finish(new DOMException('Playback cancelled', 'AbortError'));
+      };
       const timer = setTimeout(() => {
         // Check the native clock even when background progress events were delayed.
         if (advanced()) { finish(); return; }
