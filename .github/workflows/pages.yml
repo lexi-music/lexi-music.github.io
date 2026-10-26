@@ -23,6 +23,8 @@ jobs:
         run: node tests/drive-enable.cjs
       - name: Verify play, pause and skip transitions
         run: node tests/playback-transitions.cjs
+      - name: Verify native audio handoff and failure recovery
+        run: node tests/audio-handoff.cjs
       - name: Check JavaScript syntax
         run: find dist -name '*.js' -print0 | xargs -0 -n1 node --check
   deploy:

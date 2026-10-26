@@ -1,6 +1,6 @@
 (async()=>{
  'use strict';
- const scripts=['audio-deck.js?v=2','playback-diagnostics.js?v=4','metadata.js?v=1','app-player.js?v=9','player-settings.js?v=3','playlist-enhancements.js?v=7','now-playing-fullscreen-v3.js?v=2'];
+ const scripts=['audio-deck.js?v=3','playback-diagnostics.js?v=5','metadata.js?v=1','app-player.js?v=10','player-settings.js?v=3','playlist-enhancements.js?v=7','now-playing-fullscreen-v3.js?v=2'];
  try{
   const reserved=document.createElement('script');reserved.type='application/json';reserved.dataset.playlistEnhancements='reserved';document.body.append(reserved);
   for(const src of scripts)await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=src;if(src.startsWith('playlist-'))s.dataset.playlistEnhancements='1';if(src.startsWith('app-player'))s.dataset.lexiMusicPlayer='1';s.onload=resolve;s.onerror=()=>reject(Error('Could not load player'));document.body.append(s)});

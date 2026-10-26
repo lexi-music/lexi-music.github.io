@@ -890,7 +890,11 @@
     pendingTrackId = id;
     playbackLoading = true;
     wantsPlayback = true;
-    if (!window.LexiMusicDeck?.canActivate(id)) els.audio.pause();
+    // Keep the current song audible while an unprepared source is read.
+    // Assigning the replacement src (or adopting a prepared deck) ends it.
+    const previous = { id: currentTrackId, url: currentObjectUrl, artwork: currentArtworkUrl, mime: currentArtworkMime };
+    let adopted = false;
+    let playbackSucceeded = false;
     let source = null;
     let assigned = false;
     let retiredUrl = null;
@@ -902,18 +906,19 @@
         tracePlayback('prepared-source-handoff');
       } else {
         tracePlayback('source-read-start');
-        source = await sourceForTrack(track, controller.signal);
+        source = await withPlaybackDeadline(() => sourceForTrack(track, controller.signal), controller.signal, 'Reading the next song timed out.');
         tracePlayback('source-read-complete');
       }
       if (generation !== playbackGeneration || !wantsPlayback) return null;
       const previousUrl = currentObjectUrl;
       currentObjectUrl = source.url;
       currentTrackId = id;
-      const adopted = window.LexiMusicDeck?.activate(id, source.url);
+      adopted = !!window.LexiMusicDeck?.activate(id, source.url);
       if (!adopted) els.audio.src = source.url;
       else if (previousUrl !== source.url) retiredUrl = previousUrl;
       assigned = true;
-      if (!adopted && previousUrl && previousUrl !== source.url) URL.revokeObjectURL(previousUrl);
+      // Retain the previous URL until the replacement has actually started.
+      if (!adopted && previousUrl !== source.url) retiredUrl = previousUrl;
       els.nowTitle.textContent = displayTitle(track);
       els.nowMeta.textContent = [displayArtist(track), displayAlbum(track)].filter(Boolean).join(' • ');
       els.nowMeta.classList.toggle('hidden', !els.nowMeta.textContent);
@@ -949,31 +954,119 @@
         window.dispatchEvent(new Event('lexi-artwork-updated'));
         tracePlayback('artwork-published');
         // Keep the previous URL valid until replacement metadata is published.
-        if (previousArtwork && previousArtwork !== artwork) URL.revokeObjectURL(previousArtwork);
+        if (playbackSucceeded && previousArtwork && previousArtwork !== artwork) URL.revokeObjectURL(previousArtwork);
       }).catch(error => console.warn('Optional metadata unavailable', error));
       tracePlayback('play-request');
-      await els.audio.play();
+      await startNativePlayback(controller.signal);
       tracePlayback('play-resolved');
       if (retiredUrl) { URL.revokeObjectURL(retiredUrl); retiredUrl = null; }
       if (generation !== playbackGeneration) return null;
+      playbackSucceeded = true;
+      if (previous.artwork && previous.artwork !== currentArtworkUrl) URL.revokeObjectURL(previous.artwork);
       pendingTrackId = null;
       playbackLoading = false;
       warmNextTrack();
+      updatePlayButton();
       return true;
     } catch (error) {
       tracePlayback('play-failed:' + (error.name || 'Error'));
       if (generation !== playbackGeneration || controller.signal.aborted) return null;
       pendingTrackId = null;
       playbackLoading = false;
+      controller.abort();
+      if ((error.retainedSource || !assigned) && previous.id) {
+        // The deck rolled back, or reading failed before touching the audio.
+        // Restore the UI/session to the song that still owns the audio element.
+        currentTrackId = previous.id;
+        currentObjectUrl = previous.url;
+        retiredUrl = null;
+        if (source && source.url !== previous.url) URL.revokeObjectURL(source.url);
+        if (currentArtworkUrl && currentArtworkUrl !== previous.artwork) URL.revokeObjectURL(currentArtworkUrl);
+        currentArtworkUrl = previous.artwork;
+        currentArtworkMime = previous.mime;
+        playbackGeneration += 1;
+        const kept = library.find(item => item.id === previous.id);
+        if (kept) {
+          els.nowTitle.textContent = displayTitle(kept);
+          els.nowMeta.textContent = [displayArtist(kept), displayAlbum(kept)].filter(Boolean).join(' • ');
+          els.nowMeta.classList.toggle('hidden', !els.nowMeta.textContent);
+          updateMediaSession(kept);
+        }
+        wantsPlayback = !els.audio.paused && !els.audio.ended;
+        els.nowStatus.textContent = wantsPlayback ? 'Current song kept playing' : 'Paused · tap Play to retry';
+        setStatus('Could not switch songs', error.message);
+        showProgress('');
+        render();
+        updatePlayerFavoriteButton();
+        updatePlayButton();
+        return null;
+      }
+      els.audio.pause();
       showProgress('');
       setStatus('Playback could not start', error.message);
       wantsPlayback = false;
       els.nowStatus.textContent = error.message;
+      updatePlayButton();
       return false;
     } finally {
       if (source && !assigned) URL.revokeObjectURL(source.url);
       if (retiredUrl) URL.revokeObjectURL(retiredUrl);
     }
+  }
+
+  function withPlaybackDeadline(task, signal, message, timeoutMs = 12000) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', aborted);
+        error ? reject(error) : resolve(value);
+      };
+      const aborted = () => finish(new DOMException('Playback cancelled', 'AbortError'));
+      const timer = setTimeout(() => {
+        tracePlayback('playback-deadline');
+        finish(new Error(message));
+      }, timeoutMs);
+      signal?.addEventListener('abort', aborted, { once: true });
+      if (signal?.aborted) { aborted(); return; }
+      try { Promise.resolve(task()).then(value => finish(null, value), error => finish(error)); }
+      catch (error) { finish(error); }
+    });
+  }
+
+  function startNativePlayback(signal) {
+    // A resolved play() alone does not prove that iOS is advancing the audio.
+    const initialTime = els.audio.currentTime || 0;
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = error => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        for (const type of ['timeupdate', 'playing']) els.audio.removeEventListener(type, progress);
+        els.audio.removeEventListener('error', failed);
+        signal?.removeEventListener('abort', aborted);
+        error ? reject(error) : resolve();
+      };
+      const advanced = () => !els.audio.paused && els.audio.currentTime > initialTime + 0.05;
+      const progress = () => { if (advanced()) finish(); };
+      const failed = () => finish(new Error('The audio could not be played. Tap Play to retry.'));
+      const aborted = () => finish(new DOMException('Playback cancelled', 'AbortError'));
+      const timer = setTimeout(() => {
+        // Check the native clock even when background progress events were delayed.
+        if (advanced()) { finish(); return; }
+        tracePlayback('playback-deadline');
+        finish(new Error('Playback did not start. Tap Play to retry.'));
+      }, 12000);
+      for (const type of ['timeupdate', 'playing']) els.audio.addEventListener(type, progress);
+      els.audio.addEventListener('error', failed);
+      signal?.addEventListener('abort', aborted, { once: true });
+      if (signal?.aborted) { aborted(); return; }
+      try { Promise.resolve(els.audio.play()).then(progress, error => finish(error)); }
+      catch (error) { finish(error); }
+    });
   }
 
   async function resumePlayback() {
@@ -982,16 +1075,20 @@
     if (!currentTrackId || !els.audio.src) return playTrack(currentTrackId || library[0]?.id, !!currentTrackId);
     if (els.audio.readyState < 3 || els.audio.error) return playTrack(currentTrackId, true);
     const generation = playbackGeneration;
+    const controller = new AbortController();
+    playbackAbort = controller;
     wantsPlayback = true;
     playbackLoading = true;
     pendingTrackId = currentTrackId;
     claimPlaybackSession();
     try {
-      await els.audio.play();
+      await startNativePlayback(controller.signal);
       if (generation !== playbackGeneration) return;
       warmNextTrack();
     } catch (error) {
       if (generation !== playbackGeneration) return;
+      controller.abort();
+      els.audio.pause();
       wantsPlayback = false;
       setStatus('Playback could not resume', error.message);
     } finally {
@@ -1318,6 +1415,11 @@
     if (!('mediaSession' in navigator)) return;
     const actions = { play: resumePlayback, pause: pausePlayback, previoustrack: () => prevTrack(true), nexttrack: () => { tracePlayback('lockscreen-next'); return nextTrack(false); }, seekto: null, seekbackward: null, seekforward: null };
     for (const [action, handler] of Object.entries(actions)) { try { navigator.mediaSession.setActionHandler(action, handler); } catch {} }
+    if (currentTrackId && wantsPlayback && !els.audio.paused && !els.audio.ended) {
+      const track = library.find(item => item.id === currentTrackId);
+      if (track) updateMediaSession(track);
+      updatePlayButton();
+    }
   }
 
   async function init() {

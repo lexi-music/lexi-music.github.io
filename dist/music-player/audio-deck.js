@@ -24,16 +24,32 @@
   state.promise=new Promise((resolve,reject)=>{
    let settled=false;
    const cleanup=()=>{clearTimeout(timer);next.removeEventListener('timeupdate',progress);next.removeEventListener('playing',progress);next.removeEventListener('error',failed);if(handoff===state)handoff=null};
-   const finish=(error)=>{if(settled)return;settled=true;cleanup();state.old.pause();state.old.removeAttribute('src');state.old.load();
-    if(error){next.pause();trace(error.name==='AbortError'?'handoff-cancelled':'handoff-failed');reject(error)}else{trace('handoff-clock-advanced');resolve()}
+   const finish=(error,allowRollback=true)=>{if(settled)return;settled=true;cleanup();
+    if(error){
+     next.pause();
+     // Keep the original source when a replacement fails. Explicit Pause
+     // cancellation instead keeps the new selection and stops both players.
+     if(allowRollback&&!state.old.ended&&(state.old.currentSrc||state.old.src)){
+      active=state.old;error.retainedSource=true;
+      next.removeAttribute('src');next.load();trace('handoff-rolled-back');
+     }else{state.old.pause();state.old.removeAttribute('src');state.old.load()}
+     trace(error.name==='AbortError'?'handoff-cancelled':'handoff-failed');reject(error);
+    }else{
+     state.old.pause();state.old.removeAttribute('src');state.old.load();
+     trace('handoff-clock-advanced');resolve();
+    }
    };
    const progress=()=>{if(!next.paused&&next.currentTime>initial+0.05)finish()};
    const failed=()=>finish(new Error('Prepared player reported a media error'));
-   state.cancel=()=>finish(new DOMException('Handoff cancelled','AbortError'));
-   const timer=setTimeout(()=>{trace('handoff-timeout');finish(new Error('Next song did not advance; playback stopped.'))},7000);
+   state.cancel=()=>finish(new DOMException('Handoff cancelled','AbortError'),false);
+   const timer=setTimeout(()=>{
+    // Background timeupdate events can lag behind native playback.
+    if(!next.paused&&next.currentTime>initial+0.05){finish();return}
+    trace('handoff-timeout');finish(new Error('Next song did not start. Tap Next to retry.'))
+   },7000);
    next.addEventListener('timeupdate',progress);next.addEventListener('playing',progress);next.addEventListener('error',failed);
    trace('handoff-start-old-retained');
-   try{Promise.resolve(next.play()).then(()=>{trace('handoff-play-resolved');progress()},error=>finish(error))}catch(error){finish(error)}
+   try{Promise.resolve(next.play()).then(()=>{if(settled)return;trace('handoff-play-resolved');progress()},error=>finish(error))}catch(error){finish(error)}
   });return state.promise;
  }
  function activate(id,url){if(!canActivate(id,url)){trace('native-preload-not-ready');return false}

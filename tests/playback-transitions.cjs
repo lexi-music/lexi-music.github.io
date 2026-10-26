@@ -10,10 +10,14 @@ const deferred = () => {
 };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-function harness() {
+function harness({ nativeClock = false } = {}) {
+  const timers = new Map(); let timerId = 0;
+  const listeners = new Map();
   const actions = {}, requests = [], prepared = [], nodes = new Map(), storage = new Map();
   const audio = {
     src: 'A.mp3', readyState: 4, error: null, paused: true, currentTime: 0,
+    addEventListener(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); },
+    removeEventListener(type, callback) { listeners.get(type)?.delete(callback); },
     pause() { this.paused = true; },
     play() { this.paused = false; return Promise.resolve(); }
   };
@@ -25,7 +29,9 @@ function harness() {
     return nodes.get(id);
   }
   const context = vm.createContext({
-    console, AbortController, URL, Blob, Event, setTimeout, clearTimeout,
+    console, AbortController, DOMException, URL, Blob, Event,
+    setTimeout: (fn, ms) => { const id = ++timerId; timers.set(id, { fn, ms }); return id; },
+    clearTimeout: id => timers.delete(id),
     location: { href: 'https://example.test/music-player/' },
     localStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     document: { getElementById: id => id === 'audio' ? audio : node(id) },
@@ -47,6 +53,7 @@ function harness() {
     offlineIds = new Set(['A','B','C']);
     render = () => {};
     applyEmbeddedMetadata = async () => ({});
+    ${nativeClock ? '' : "startNativePlayback = signal => withPlaybackDeadline(() => els.audio.play(), signal, 'Playback timed out');"}
     installMediaControls();
     window.testPlayer = {
       playTrack, resumePlayback, pausePlayback,
@@ -58,7 +65,10 @@ function harness() {
   vm.runInContext(source.replace(marker, hook + marker), context);
   const player = context.window.testPlayer;
   player.source(async track => { requests.push(track.id); return { url: track.id + '.mp3', offline: true, blob: new Blob(['audio']) }; });
-  return { player, audio, actions, requests, prepared, nodes, context };
+  return { player, audio, actions, requests, prepared, nodes, context,
+    emit(type) { for (const fn of [...(listeners.get(type) || [])]) fn(); },
+    expire(ms) { for (const [id, timer] of [...timers]) { if (timer.ms === ms) { timers.delete(id); timer.fn(); } } }
+  };
 }
 
 (async () => {
@@ -128,5 +138,53 @@ function harness() {
     assert.equal(calls, 1, 'Repeated system Play must share the pending start');
     native.resolve(); await resume;
   }
-  console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play');
+  {
+    const h = harness(), read = deferred();
+    h.audio.paused = false;
+    h.player.source(() => read.promise);
+    const skip = h.actions.nexttrack();
+    assert.equal(h.audio.paused, false, 'Reading the next song must not pause the current song');
+    h.expire(12000); await skip;
+    assert.equal(h.player.state().currentTrackId, 'A');
+    assert.equal(h.audio.paused, false, 'A timed-out source read must retain current playback');
+    assert.equal(h.player.state().playbackLoading, false);
+  }
+  {
+    const h = harness({ nativeClock:true });
+    const resume = h.actions.play(); await flush();
+    assert.equal(h.player.state().playbackLoading, true, 'Resolved play without clock progress is still loading');
+    h.expire(12000); await resume;
+    assert.equal(h.player.state().playbackLoading, false);
+    assert.equal(h.player.state().wantsPlayback, false);
+    assert.equal(h.audio.paused, true);
+    const retry = h.actions.play(); await flush();
+    h.audio.currentTime += 1; h.emit('timeupdate'); await retry;
+    assert.equal(h.player.state().wantsPlayback, true, 'Play must work again after a stalled start');
+  }
+  {
+    const h = harness({ nativeClock:true });
+    h.audio.play = () => new Promise(() => {});
+    const resume = h.actions.play(); h.expire(12000); await resume;
+    assert.equal(h.player.state().playbackLoading, false, 'An unresolved native play must not lock controls');
+    assert.equal(h.audio.paused, true);
+  }
+  {
+    const h = harness({ nativeClock:true });
+    const resume = h.actions.play(); await flush();
+    h.audio.currentTime = 1; h.expire(12000); await resume;
+    assert.equal(h.player.state().wantsPlayback, true, 'Delayed background progress events must not cause a false timeout');
+  }
+  {
+    const h = harness();
+    h.audio.paused = false;
+    h.context.window.LexiMusicDeck.activate = () => true;
+    h.audio.play = async () => { const error = Error('handoff failed'); error.retainedSource = true; throw error; };
+    await h.actions.nexttrack();
+    assert.equal(h.player.state().currentTrackId, 'A', 'Rollback must restore the old track selection');
+    assert.equal(h.context.navigator.mediaSession.metadata.title, 'A', 'Lock-screen metadata must match retained audio');
+    assert.equal(h.context.navigator.mediaSession.playbackState, 'playing');
+    assert.equal(h.player.state().pendingTrackId, null);
+    assert.equal(h.player.state().playbackLoading, false);
+  }
+  console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });
