@@ -17,6 +17,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Verify canonical project identity
+        run: |
+          node scripts/check-project.cjs
+          node tests/project-identity.cjs
       - name: Verify startup and offline navigation
         run: node tests/navigation-redirect.cjs
       - name: Verify library preservation and accepted playback modules
@@ -40,6 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare exact source release receipt
+        run: node scripts/prepare-release.cjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -49,3 +55,5 @@ jobs:
         uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Verify production commit and served file hashes
+        run: node scripts/verify-production.cjs

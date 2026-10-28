@@ -58,3 +58,14 @@ Verify the changed files served by https://lexi-music.github.io/ before declarin
 - Do not diagnose the user's problem as a stale cache without evidence. Do not repeatedly ask them to reopen an app after that step has failed.
 - If an earlier answer or edit was wrong, state the exact error, its cause, and the evidence supporting the correction.
 - Keep user-facing updates concise. Never claim an action was performed unless it was.
+
+## Enforced release identity and recurrence rules
+
+- Read the Canonical Map and its Project instructions tab, the private Music runbook, this file, and current main before selecting an app. Conflicting older “current” paragraphs are historical; verify the production origin against live source.
+- Run `node scripts/check-project.cjs` before editing and before committing. It rejects the wrong repository, Git remote, CI branch, Sites manifest, or PWA identity. The same check is mandatory in CI.
+- The Music production target is only `https://lexi-music.github.io`. A deployment receipt from Sites or another GitHub origin cannot satisfy this task. Never ask the owner to migrate, reinstall, reset, clear storage, or download again to compensate for publishing to the wrong app.
+- `project.json` records the canonical identity and playback build. Keep runtime query versions, worker aliases/cache and the diagnostics build label consistent. Script query versions and historical Sites version numbers are not installed-app version proof.
+- The deploy job generates `release.json` from the checked commit. After Pages succeeds, `scripts/verify-production.cjs` must match that commit and every listed runtime file hash at the exact production origin. A successful push or Actions artifact upload alone is insufficient.
+- Record the commit, Pages run, exact served build and remaining device-verification limits in the private project documents. Correct stale active-app summaries and actionable links; mark retained old release paragraphs as history.
+- A reported recurrence requires checking the actual installed build and current source. Never assume stale cache or a particular iOS cause from an old log. An advancing timer and resolved play promise prove neither sound nor a permanent fix.
+- Preserve latest-intent cancellation, bounded storage/native starts, missing-download handling and data isolation when changing audio architecture. Test fast prepared skips, rapid skips, Pause, resume, natural end/repeat, failed reads/starts and old-loader/current-worker compatibility.

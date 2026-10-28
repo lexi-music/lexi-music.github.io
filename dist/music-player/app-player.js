@@ -843,8 +843,7 @@
   }
 
   function tracePlayback(stage) { window.LexiMusicDiagnostics?.record(stage); }
-  function clearPrefetch(keepMedia = false) {
-    if (!keepMedia) window.LexiMusicDeck?.clear();
+  function clearPrefetch() {
     if (prefetched?.source?.url && prefetched.source.url !== currentObjectUrl) URL.revokeObjectURL(prefetched.source.url);
     prefetched = null;
   }
@@ -863,7 +862,6 @@
       const stale = !audioRowIsCurrent(library.find(track => track.id === id), row);
       if (stale && navigator.onLine && accessToken) return;
       entry.source = {url:downloadedAudioUrl(library.find(track => track.id === id), row.blob),offline:true,stale,blob:row.blob};
-      window.LexiMusicDeck?.prepare(id, entry.source.url);
       entry.artwork = window.MusicMetadata?.parse(row.blob, library.find(track => track.id === id)?.mimeType || '', true).catch(() => null);
       if (entry.artwork) entry.source.artwork = entry.artwork;
       tracePlayback('next-source-prepared');
@@ -891,9 +889,8 @@
     playbackLoading = true;
     wantsPlayback = true;
     // Keep the current song audible while an unprepared source is read.
-    // Assigning the replacement src (or adopting a prepared deck) ends it.
+    // Assigning the replacement src ends it.
     const previous = { id: currentTrackId, url: currentObjectUrl, artwork: currentArtworkUrl, mime: currentArtworkMime };
-    let adopted = false;
     let playbackSucceeded = false;
     let source = null;
     let assigned = false;
@@ -902,7 +899,7 @@
       if (prefetched?.id === id && prefetched.source) {
         source = prefetched.source;
         prefetched.source = null; // Ownership moves to the active audio source.
-        clearPrefetch(true);
+        clearPrefetch();
         tracePlayback('prepared-source-handoff');
       } else {
         tracePlayback('source-read-start');
@@ -913,23 +910,15 @@
       const previousUrl = currentObjectUrl;
       currentObjectUrl = source.url;
       currentTrackId = id;
-      adopted = !!window.LexiMusicDeck?.activate(id, source.url);
-      if (!adopted) els.audio.src = source.url;
-      else if (previousUrl !== source.url) retiredUrl = previousUrl;
+      // Reuse the original user-authorized element. A prepared download must
+      // request native playback in this Media Session callback, before UI work.
+      els.audio.src = source.url;
       assigned = true;
-      // Retain the previous URL until the replacement has actually started.
-      if (!adopted && previousUrl !== source.url) retiredUrl = previousUrl;
-      els.nowTitle.textContent = displayTitle(track);
-      els.nowMeta.textContent = [displayArtist(track), displayAlbum(track)].filter(Boolean).join(' • ');
-      els.nowMeta.classList.toggle('hidden', !els.nowMeta.textContent);
-      els.nowStatus.textContent = 'Preparing audio…';
-      els.player.classList.remove('hidden');
-      updateMediaSession(track);
-      render();
-      // src assignment starts native loading. play() requests playback directly;
-      // a background canplay callback must not gate the request.
-      if (generation !== playbackGeneration || !wantsPlayback) return null;
-      els.audio.currentTime = 0;
+      if (previousUrl !== source.url) retiredUrl = previousUrl;
+      claimPlaybackSession();
+      tracePlayback('play-request');
+      const playback = startNativePlayback(controller.signal);
+      playback.catch(() => {});
       els.nowTitle.textContent = displayTitle(track);
       els.nowMeta.textContent = [displayArtist(track), displayAlbum(track)].filter(Boolean).join(' • ');
       els.nowMeta.classList.toggle('hidden', !els.nowMeta.textContent);
@@ -938,7 +927,6 @@
       updatePlayerFavoriteButton();
       updateMediaSession(track);
       render();
-      claimPlaybackSession();
       // Publish artwork independently of a pending native play promise.
       const parse = source.artwork || (source.stale && window.MusicMetadata?.parse
         ? window.MusicMetadata.parse(source.blob, track.mimeType || '', true)
@@ -956,8 +944,7 @@
         // Keep the previous URL valid until replacement metadata is published.
         if (playbackSucceeded && previousArtwork && previousArtwork !== artwork) URL.revokeObjectURL(previousArtwork);
       }).catch(error => console.warn('Optional metadata unavailable', error));
-      tracePlayback('play-request');
-      await startNativePlayback(controller.signal);
+      await playback;
       tracePlayback('play-resolved');
       if (retiredUrl) { URL.revokeObjectURL(retiredUrl); retiredUrl = null; }
       if (generation !== playbackGeneration) return null;
@@ -974,8 +961,8 @@
       pendingTrackId = null;
       playbackLoading = false;
       controller.abort();
-      if ((error.retainedSource || !assigned) && previous.id) {
-        // The deck rolled back, or reading failed before touching the audio.
+      if (!assigned && previous.id) {
+        // Reading failed before touching the audio.
         // Restore the UI/session to the song that still owns the audio element.
         currentTrackId = previous.id;
         currentObjectUrl = previous.url;
@@ -1054,7 +1041,7 @@
       const progress = () => { if (advanced()) finish(); };
       const failed = () => finish(new Error('The audio could not be played. Tap Play to retry.'));
       const aborted = () => {
-        // Settle the native deck as well as this promise before a newer skip.
+        // Cancel the previous native start before a newer skip owns the player.
         els.audio.pause();
         finish(new DOMException('Playback cancelled', 'AbortError'));
       };

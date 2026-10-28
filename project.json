@@ -1,0 +1,8 @@
+{
+  "repository": "lexi-music/lexi-music.github.io",
+  "branch": "main",
+  "productionOrigin": "https://lexi-music.github.io",
+  "publishDirectory": "dist",
+  "workflow": ".github/workflows/pages.yml",
+  "playbackBuild": "canonical-12"
+}

@@ -58,6 +58,9 @@ function harness({ nativeClock = false } = {}) {
     window.testPlayer = {
       playTrack, resumePlayback, pausePlayback,
       source(fn) { sourceForTrack = fn; },
+      prepare(id) { prefetched = {id, source:{url:id+'.mp3',offline:true,blob:new Blob(['audio'])}}; },
+      warmed() { return prefetched?.id; },
+      repeat(mode) { repeatMode=mode; },
       state() { return {currentTrackId, pendingTrackId, playbackLoading, wantsPlayback}; }
     };
     return;
@@ -71,7 +74,8 @@ function harness({ nativeClock = false } = {}) {
   };
 }
 
-(async () => {
+module.exports = { harness, flush };
+if (require.main === module) (async () => {
   {
     const h = harness(), read = deferred();
     h.audio.readyState = 2;
@@ -93,7 +97,7 @@ function harness({ nativeClock = false } = {}) {
     assert.equal(h.prepared.length, 0);
     h.audio.play = async () => { h.audio.paused = false; };
     await h.actions.play(); await flush();
-    assert.deepEqual(h.prepared, ['C'], 'Resume must restore next-song preparation');
+    assert.equal(h.player.warmed(), 'C', 'Resume must restore next-song preparation');
     assert.equal(h.player.state().wantsPlayback, true);
   }
   {
@@ -173,18 +177,6 @@ function harness({ nativeClock = false } = {}) {
     const resume = h.actions.play(); await flush();
     h.audio.currentTime = 1; h.expire(12000); await resume;
     assert.equal(h.player.state().wantsPlayback, true, 'Delayed background progress events must not cause a false timeout');
-  }
-  {
-    const h = harness();
-    h.audio.paused = false;
-    h.context.window.LexiMusicDeck.activate = () => true;
-    h.audio.play = async () => { const error = Error('handoff failed'); error.retainedSource = true; throw error; };
-    await h.actions.nexttrack();
-    assert.equal(h.player.state().currentTrackId, 'A', 'Rollback must restore the old track selection');
-    assert.equal(h.context.navigator.mediaSession.metadata.title, 'A', 'Lock-screen metadata must match retained audio');
-    assert.equal(h.context.navigator.mediaSession.playbackState, 'playing');
-    assert.equal(h.player.state().pendingTrackId, null);
-    assert.equal(h.player.state().playbackLoading, false);
   }
   {
     const h = harness({ nativeClock:true }), read = deferred();
