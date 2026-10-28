@@ -1,5 +1,5 @@
 const fs = require('fs'), assert = require('node:assert/strict'), {execFileSync} = require('child_process');
-const expected = {repository:'lexi-music/lexi-music.github.io',branch:'main',productionOrigin:'https://lexi-music.github.io',publishDirectory:'dist',workflow:'.github/workflows/pages.yml',playbackBuild:'canonical-12'};
+const expected = {repository:'lexi-music/lexi-music.github.io',branch:'main',productionOrigin:'https://lexi-music.github.io',publishDirectory:'dist',workflow:'.github/workflows/pages.yml',playbackBuild:'v1.00'};
 const project = JSON.parse(fs.readFileSync('project.json'));
 assert.deepEqual(project, expected, 'Wrong project identity: stop before editing or publishing');
 const remote = execFileSync('git',['remote','get-url','origin'],{encoding:'utf8'}).trim();
