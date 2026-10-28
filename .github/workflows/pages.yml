@@ -17,6 +17,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Check visible app version
+        run: node scripts/check-version.cjs
       - name: Verify canonical project identity
         run: |
           node scripts/check-project.cjs

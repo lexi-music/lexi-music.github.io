@@ -13,11 +13,11 @@
  let lastTime=0;audio?.addEventListener('timeupdate',()=>{if(Date.now()-lastTime>5000){lastTime=Date.now();record('audio:progress')}});
  document.addEventListener('visibilitychange',()=>record('visibility'));window.addEventListener('pageshow',()=>record('pageshow'));
  async function share(){
-  const file=new File([JSON.stringify({build:'canonical-12',origin:location.origin,userAgent:navigator.userAgent,events:records},null,2)],'lexi-music-playback-log.json',{type:'application/json'});
+  const file=new File([JSON.stringify({build:'canonical-12',appVersion:document.documentElement.dataset.appVersion,origin:location.origin,userAgent:navigator.userAgent,events:records},null,2)],'lexi-music-playback-log.json',{type:'application/json'});
   if(navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file]});return}catch(e){if(e.name==='AbortError')return}}
   const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
  }
- function addButton(){const dialog=document.getElementById('settingsDialog');if(!dialog||document.getElementById('sharePlaybackLog'))return;const b=document.createElement('button');b.id='sharePlaybackLog';b.type='button';b.className='button secondary';b.textContent='Share playback log · canonical-12';b.addEventListener('click',share);dialog.append(b)}
+ function addButton(){const dialog=document.getElementById('settingsDialog');if(!dialog||document.getElementById('sharePlaybackLog'))return;const b=document.createElement('button');b.id='sharePlaybackLog';b.type='button';b.className='button secondary';b.textContent='Share playback log';b.addEventListener('click',share);dialog.append(b)}
  document.getElementById('settingsBtn')?.addEventListener('click',()=>setTimeout(addButton,0));
  record('diagnostics-ready');
 })();

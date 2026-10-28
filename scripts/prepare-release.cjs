@@ -4,5 +4,5 @@ const paths=['index.html','music-player/index.html','music-player/app-player.js'
 const sha=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 if(process.env.GITHUB_SHA&&process.env.GITHUB_SHA!==sha)throw Error('Workflow SHA does not match source');
 const files=Object.fromEntries(paths.map(p=>[p,crypto.createHash('sha256').update(fs.readFileSync('dist/'+p)).digest('hex')]));
-fs.writeFileSync('dist/release.json',JSON.stringify({...project,commit:sha,files},null,2)+'\n');
+fs.writeFileSync('dist/release.json',JSON.stringify({...project,appVersion:JSON.parse(fs.readFileSync('version.json')).version,commit:sha,files},null,2)+'\n');
 console.log('Release prepared for '+project.productionOrigin+' at '+sha);
