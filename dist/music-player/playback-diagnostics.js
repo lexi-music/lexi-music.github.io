@@ -13,7 +13,7 @@
  let lastTime=0;audio?.addEventListener('timeupdate',()=>{if(Date.now()-lastTime>5000){lastTime=Date.now();record('audio:progress')}});
  document.addEventListener('visibilitychange',()=>record('visibility'));window.addEventListener('pageshow',()=>record('pageshow'));
  async function share(){
-  const file=new File([JSON.stringify({build:'v1.00',appVersion:document.documentElement.dataset.appVersion,origin:location.origin,userAgent:navigator.userAgent,events:records},null,2)],'lexi-music-playback-log.json',{type:'application/json'});
+  const file=new File([JSON.stringify({build:'v1.01',appVersion:document.documentElement.dataset.appVersion,origin:location.origin,userAgent:navigator.userAgent,events:records},null,2)],'lexi-music-playback-log.json',{type:'application/json'});
   if(navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file]});return}catch(e){if(e.name==='AbortError')return}}
   const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
  }

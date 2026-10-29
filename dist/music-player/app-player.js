@@ -917,7 +917,9 @@
       if (previousUrl !== source.url) retiredUrl = previousUrl;
       claimPlaybackSession();
       tracePlayback('play-request');
-      const playback = startNativePlayback(controller.signal);
+      // A replacement starts at zero; currentTime can still expose the old
+      // resource position until its asynchronous load has been processed.
+      const playback = startNativePlayback(controller.signal, 0);
       playback.catch(() => {});
       els.nowTitle.textContent = displayTitle(track);
       els.nowMeta.textContent = [displayArtist(track), displayAlbum(track)].filter(Boolean).join(' • ');
@@ -1023,9 +1025,8 @@
     });
   }
 
-  function startNativePlayback(signal) {
+  function startNativePlayback(signal, initialTime = els.audio.currentTime || 0) {
     // A resolved play() alone does not prove that iOS is advancing the audio.
-    const initialTime = els.audio.currentTime || 0;
     return new Promise((resolve, reject) => {
       let settled = false;
       const finish = error => {

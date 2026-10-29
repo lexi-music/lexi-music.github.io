@@ -187,5 +187,30 @@ if (require.main === module) (async () => {
     h.actions.pause(); await skip;
     assert.equal(h.player.state().wantsPlayback, false);
   }
+  // src replacement can expose the previous resource's official position
+  // until the browser processes the new load. Do not use it as the new baseline.
+  for (const prepared of [false, true]) {
+    for (const progressEvent of [false, true]) {
+      const h = harness({ nativeClock:true });
+      h.audio.currentTime = 180; h.audio.paused = false;
+      if (prepared) h.player.prepare('B');
+      const skip = h.actions.nexttrack(); await flush();
+      h.audio.currentTime = .5;
+      if (progressEvent) h.emit('timeupdate');
+      h.expire(12000); await flush();
+      assert.equal(h.player.state().currentTrackId, 'B', 'A playing replacement must not be skipped by a false deadline');
+      await skip;
+      assert.equal(h.audio.paused, false, 'A new song must not time out against the old song clock');
+      assert.equal(h.player.state().wantsPlayback, true);
+      assert.equal(h.player.state().playbackLoading, false);
+    }
+  }
+  {
+    const h = harness({ nativeClock:true });
+    h.audio.currentTime = 180;
+    const resume = h.actions.play(); await flush();
+    h.expire(12000); await resume;
+    assert.equal(h.audio.paused, true, 'A stalled resume must still require progress past its saved position');
+  }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });

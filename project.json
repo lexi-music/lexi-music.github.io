@@ -4,5 +4,5 @@
   "productionOrigin": "https://lexi-music.github.io",
   "publishDirectory": "dist",
   "workflow": ".github/workflows/pages.yml",
-  "playbackBuild": "v1.00"
+  "playbackBuild": "v1.01"
 }
