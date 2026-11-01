@@ -29,6 +29,8 @@ jobs:
         run: node tests/drive-enable.cjs
       - name: Verify play, pause and skip transitions
         run: node tests/playback-transitions.cjs
+      - name: Verify lock-screen Next burst guard
+        run: node tests/lockscreen-next-guard.cjs
       - name: Verify native audio handoff and failure recovery
         run: node tests/audio-handoff.cjs
       - name: Check JavaScript syntax
