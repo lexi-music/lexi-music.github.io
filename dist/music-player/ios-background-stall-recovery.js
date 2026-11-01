@@ -3,6 +3,10 @@
   if (window.__lexiIosBackgroundStallRecovery) return;
   window.__lexiIosBackgroundStallRecovery = true;
 
+  document.documentElement.dataset.appVersion = 'v1.03';
+  const versionLabel = document.getElementById('appVersion');
+  if (versionLabel) { versionLabel.dataset.version = 'v1.03'; versionLabel.textContent = 'v1.03'; }
+
   const audio = window.LexiMusicAudio || document.getElementById('audio');
   const storage = window.LexiAudioStorage;
   if (!audio || !storage) return;
