@@ -1,5 +1,5 @@
 {
-  "version": "v1.03",
+  "version": "v1.05",
   "repository": "lexi-music/lexi-music.github.io",
   "url": "https://lexi-music.github.io/music-player/",
   "html": "dist/music-player/index.html",

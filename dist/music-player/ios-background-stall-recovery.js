@@ -3,9 +3,6 @@
   if (window.__lexiIosBackgroundStallRecovery) return;
   window.__lexiIosBackgroundStallRecovery = true;
 
-  document.documentElement.dataset.appVersion = 'v1.05';
-  const versionLabel = document.getElementById('appVersion');
-  if (versionLabel) { versionLabel.dataset.version = 'v1.05'; versionLabel.textContent = 'v1.05'; }
 
   const audio = window.LexiMusicAudio || document.getElementById('audio');
   const storage = window.LexiAudioStorage;
