@@ -1,8 +1,8 @@
-// App version: v1.03
+// App version: v1.05
 importScripts('./offline-audio.js?v=1');
 const CACHE_PREFIX = 'music-shell-';
-const CACHE = 'music-shell-v98-release-v1.03';
-const SHELL = ['./full-test-loader.js?v=14', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=4', './offline-audio.js?v=1', './playback-diagnostics.js?v=9', './media-session-next-guard.js?v=1', './', './styles.css?v=21', './app-player.js?v=13', './ios-background-stall-recovery.js?v=1', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=3', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
+const CACHE = 'music-shell-v99-release-v1.05';
+const SHELL = ['./full-test-loader.js?v=15', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=4', './offline-audio.js?v=1', './playback-diagnostics.js?v=9', './media-session-next-guard.js?v=1', './', './styles.css?v=21', './app-player.js?v=13', './ios-background-stall-recovery.js?v=2', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=3', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
 function navigationResponse(response) {
   if (!response.redirected) return response;
   const headers = new Headers(response.headers);
@@ -11,14 +11,14 @@ function navigationResponse(response) {
   return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
 }
 const ALIASES = {
-  'full-test-loader.js': './full-test-loader.js?v=14',
+  'full-test-loader.js': './full-test-loader.js?v=15',
   'audio-deck.js': './audio-deck.js?v=4',
   'playback-diagnostics.js': './playback-diagnostics.js?v=9',
   'media-session-next-guard.js': './media-session-next-guard.js?v=1',
   'app-recovery.js': './app-player.js?v=13',
   'audio-storage-recovery.js': './audio-storage-player.js?v=1',
   'app-player.js': './app-player.js?v=13',
-  'ios-background-stall-recovery.js': './ios-background-stall-recovery.js?v=1',
+  'ios-background-stall-recovery.js': './ios-background-stall-recovery.js?v=2',
   'audio-storage-player.js': './audio-storage-player.js?v=1',
   'playback-prefetch.js': './playback-prefetch.js',
   'player-settings.js': './player-settings.js?v=3',
@@ -55,12 +55,8 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (req.method !== 'GET') return;
-  // No private Drive responses or sibling applications are cached here.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    // The installed player must boot without waiting for airport Wi-Fi,
-    // captive portals, or a disconnected network. New worker installation
-    // refreshes the shell and keeps versioned scripts paired with aliases.
     if (req.mode === 'navigate') {
       const saved = await cache.match('./') || await cache.match('./index.html');
       if (saved) return navigationResponse(saved);
