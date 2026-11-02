@@ -3,9 +3,9 @@
   if (window.__lexiIosBackgroundStallRecovery) return;
   window.__lexiIosBackgroundStallRecovery = true;
 
-  document.documentElement.dataset.appVersion = 'v1.04';
+  document.documentElement.dataset.appVersion = 'v1.05';
   const versionLabel = document.getElementById('appVersion');
-  if (versionLabel) { versionLabel.dataset.version = 'v1.04'; versionLabel.textContent = 'v1.04'; }
+  if (versionLabel) { versionLabel.dataset.version = 'v1.05'; versionLabel.textContent = 'v1.05'; }
 
   const audio = window.LexiMusicAudio || document.getElementById('audio');
   const storage = window.LexiAudioStorage;
@@ -64,19 +64,20 @@
 
   function scheduleRecovery() {
     const id = offlineIdFromSource();
-    // iOS can report readyState=HAVE_METADATA (1) or even HAVE_ENOUGH_DATA (4)
-    // while hidden playback is still stuck at 0. A zero-time stalled/waiting event is
-    // the reliable signal; readyState must not suppress recovery.
     if (!id || !document.hidden || audio.paused || audio.currentTime > 0.05) return;
     if (recoveryTimer) return;
     const token = ++recoveryToken;
     trace('ios-background-stall-recovery-armed');
-    recoveryTimer = setTimeout(() => recover(token, id), 900);
+    recoveryTimer = setTimeout(() => recover(token, id), 650);
   }
 
   audio.addEventListener('stalled', scheduleRecovery);
   audio.addEventListener('waiting', scheduleRecovery);
-  audio.addEventListener('playing', () => { if (audio.currentTime > 0.05) cancelRecovery(); });
+  audio.addEventListener('loadedmetadata', scheduleRecovery);
+  audio.addEventListener('playing', () => {
+    if (audio.currentTime > 0.05) cancelRecovery();
+    else scheduleRecovery();
+  });
   audio.addEventListener('timeupdate', () => { if (audio.currentTime > 0.05) cancelRecovery(); });
   audio.addEventListener('emptied', () => {
     cancelRecovery();
@@ -85,4 +86,9 @@
       activeFallbackUrl = null;
     }
   });
+
+  // The module can arrive after iOS has already emitted waiting/stalled while
+  // the PWA is hidden. Arm recovery from the current native state as well.
+  trace('ios-background-stall-recovery-ready');
+  scheduleRecovery();
 })();
