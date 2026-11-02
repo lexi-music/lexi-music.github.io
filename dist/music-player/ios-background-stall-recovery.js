@@ -3,9 +3,9 @@
   if (window.__lexiIosBackgroundStallRecovery) return;
   window.__lexiIosBackgroundStallRecovery = true;
 
-  document.documentElement.dataset.appVersion = 'v1.03';
+  document.documentElement.dataset.appVersion = 'v1.04';
   const versionLabel = document.getElementById('appVersion');
-  if (versionLabel) { versionLabel.dataset.version = 'v1.03'; versionLabel.textContent = 'v1.03'; }
+  if (versionLabel) { versionLabel.dataset.version = 'v1.04'; versionLabel.textContent = 'v1.04'; }
 
   const audio = window.LexiMusicAudio || document.getElementById('audio');
   const storage = window.LexiAudioStorage;
@@ -27,9 +27,7 @@
   }
 
   function audioBlob(value) {
-    if (value?.__musicBytes instanceof ArrayBuffer) {
-      return new Blob([value.__musicBytes], { type: value.type || 'application/octet-stream' });
-    }
+    if (value?.__musicBytes instanceof ArrayBuffer) return new Blob([value.__musicBytes], { type: value.type || 'application/octet-stream' });
     if (value instanceof Blob) return value;
     if (value instanceof ArrayBuffer || ArrayBuffer.isView(value)) return new Blob([value]);
     return null;
@@ -43,14 +41,14 @@
 
   async function recover(token, expectedId) {
     recoveryTimer = null;
-    if (token !== recoveryToken || !document.hidden || audio.paused || audio.currentTime > 0.05 || audio.readyState > 1) return;
+    if (token !== recoveryToken || !document.hidden || audio.paused || audio.currentTime > 0.05) return;
     if (offlineIdFromSource() !== expectedId) return;
     try {
       await storage.ready;
       const row = await storage.get(expectedId);
-      if (token !== recoveryToken || offlineIdFromSource() !== expectedId) return;
+      if (token !== recoveryToken || offlineIdFromSource() !== expectedId || !document.hidden || audio.paused || audio.currentTime > 0.05) return;
       const blob = audioBlob(row?.blob);
-      if (!blob?.size) return;
+      if (!blob?.size) { trace('ios-background-stall-recovery-no-blob'); return; }
       const fallbackUrl = URL.createObjectURL(blob);
       const oldFallbackUrl = activeFallbackUrl;
       activeFallbackUrl = fallbackUrl;
@@ -66,16 +64,19 @@
 
   function scheduleRecovery() {
     const id = offlineIdFromSource();
-    if (!id || !document.hidden || audio.paused || audio.currentTime > 0.05 || audio.readyState > 1) return;
+    // iOS can report readyState=HAVE_METADATA (1) or even HAVE_ENOUGH_DATA (4)
+    // while hidden playback is still stuck at 0. A zero-time stalled/waiting event is
+    // the reliable signal; readyState must not suppress recovery.
+    if (!id || !document.hidden || audio.paused || audio.currentTime > 0.05) return;
     if (recoveryTimer) return;
     const token = ++recoveryToken;
     trace('ios-background-stall-recovery-armed');
-    recoveryTimer = setTimeout(() => recover(token, id), 1200);
+    recoveryTimer = setTimeout(() => recover(token, id), 900);
   }
 
   audio.addEventListener('stalled', scheduleRecovery);
   audio.addEventListener('waiting', scheduleRecovery);
-  audio.addEventListener('playing', cancelRecovery);
+  audio.addEventListener('playing', () => { if (audio.currentTime > 0.05) cancelRecovery(); });
   audio.addEventListener('timeupdate', () => { if (audio.currentTime > 0.05) cancelRecovery(); });
   audio.addEventListener('emptied', () => {
     cancelRecovery();
