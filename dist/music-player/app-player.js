@@ -833,6 +833,8 @@
     pendingTrackId = null;
     playbackLoading = false;
     els.audio.pause();
+    playbackConfirmed = false;
+    updatePlayButton();
   }
 
   function releaseAudioSource() {
@@ -876,6 +878,8 @@
     installMediaControls();
   }
 
+  let playbackConfirmed = false;
+
   async function playTrack(id, preserveQueue = false) {
     const track = library.find(item => item.id === id);
     if (!track) return false;
@@ -912,6 +916,7 @@
       currentTrackId = id;
       // Reuse the original user-authorized element. A prepared download must
       // request native playback in this Media Session callback, before UI work.
+      playbackConfirmed = false;
       els.audio.src = source.url;
       assigned = true;
       if (previousUrl !== source.url) retiredUrl = previousUrl;
@@ -1039,7 +1044,13 @@
         error ? reject(error) : resolve();
       };
       const advanced = () => !els.audio.paused && els.audio.currentTime > initialTime + 0.05;
-      const progress = () => { if (advanced()) finish(); };
+      const progress = () => {
+        if (advanced()) {
+          playbackConfirmed = true;
+          updatePlayButton();
+          finish();
+        }
+      };
       const failed = () => finish(new Error('The audio could not be played. Tap Play to retry.'));
       const aborted = () => {
         // Cancel the previous native start before a newer skip owns the player.
@@ -1070,6 +1081,7 @@
     const controller = new AbortController();
     playbackAbort = controller;
     wantsPlayback = true;
+    playbackConfirmed = false;
     playbackLoading = true;
     pendingTrackId = currentTrackId;
     claimPlaybackSession();
@@ -1225,7 +1237,7 @@
   function updatePlayButton() {
     els.playBtn.textContent = els.audio.paused ? '▶' : '❚❚';
     if ('mediaSession' in navigator) {
-      try { navigator.mediaSession.playbackState = els.audio.paused ? 'paused' : 'playing'; } catch {}
+      try { navigator.mediaSession.playbackState = !els.audio.paused && playbackConfirmed ? 'playing' : 'paused'; } catch {}
     }
   }
 
@@ -1362,7 +1374,7 @@
     els.savePlaylistsBtn.addEventListener('click', saveDialogPlaylists);
 
     els.audio.addEventListener('play', updatePlayButton);
-    els.audio.addEventListener('pause', updatePlayButton);
+    els.audio.addEventListener('pause', () => { playbackConfirmed = false; updatePlayButton(); });
     els.audio.addEventListener('ended', () => { if (!playbackLoading && wantsPlayback && els.audio.ended) nextTrack(true); });
     els.audio.addEventListener('timeupdate', () => {
       if (seekDragging || !Number.isFinite(els.audio.duration) || els.audio.duration <= 0) return;
