@@ -234,7 +234,7 @@ if (require.main === module) (async () => {
     assert.notEqual(h.context.navigator.mediaSession.playbackState, 'playing', 'Pending native start must not be reported as playing');
     h.audio.currentTime = 1; h.emit('timeupdate'); await start;
     assert.equal(h.context.navigator.mediaSession.playbackState, 'playing', 'Progress confirms playback');
-    h.actions.pause();
+    h.actions.pause(); h.emit('pause');
     assert.equal(h.context.navigator.mediaSession.playbackState, 'paused', 'Pause clears playback confirmation');
   }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
