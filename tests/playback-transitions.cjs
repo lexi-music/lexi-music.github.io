@@ -212,5 +212,30 @@ if (require.main === module) (async () => {
     h.expire(12000); await resume;
     assert.equal(h.audio.paused, true, 'A stalled resume must still require progress past its saved position');
   }
+  // Background recovery compatibility module must never replace a pending source.
+  {
+    const h = harness({nativeClock:true });
+    h.context.document.hidden = true;
+    h.context.document.visibilityState = 'hidden';
+    const recovery = fs.readFileSync('dist/music-player/ios-background-stall-recovery.js', 'utf8');
+    const originalSource = h.audio.src;
+    let nativeStarts = 0;
+    h.audio.play = () => { nativeStarts += 1; h.audio.paused = false; return Promise.resolve(); };
+    vm.runInContext(recovery, h.context);
+    h.emit('waiting'); h.emit('stalled'); h.emit('loadedmetadata');
+    h.expire(650);
+    assert.equal(h.audio.src, originalSource, 'Recovery must not replace a source while native play is pending');
+    assert.equal(nativeStarts, 0, 'Recovery must not issue an independent play request');
+  }
+  // The lock-screen status must not claim playing before the native clock advances.
+  {
+    const h = harness({nativeClock:true});
+    const start = h.actions.play(); await flush();
+    assert.equal(h.context.navigator.mediaSession.playbackState, 'paused', 'Pending native start must not be reported as playing');
+    h.audio.currentTime = 1; h.emit('timeupdate'); await start;
+    assert.equal(h.context.navigator.mediaSession.playbackState, 'playing', 'Progress confirms playback');
+    h.actions.pause();
+    assert.equal(h.context.navigator.mediaSession.playbackState, 'paused', 'Pause clears playback confirmation');
+  }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });
