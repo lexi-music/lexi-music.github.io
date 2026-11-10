@@ -247,7 +247,7 @@ if (require.main === module) (async () => {
     const h = harness();
     h.player.view('ALL');
     await h.player.playTrack('B');
-    assert.deepEqual(h.player.queueSnapshot(), ['A','B','C'], 'Unshuffled queue must match visible list order');
+    assert.deepEqual(Array.from(h.player.queueSnapshot()), ['A','B','C'], 'Unshuffled queue must match visible list order');
     await h.actions.nexttrack();
     assert.equal(h.player.state().currentTrackId, 'C', 'Next must move to the next visible song');
     await h.actions.nexttrack();
@@ -258,7 +258,7 @@ if (require.main === module) (async () => {
     const h = harness();
     h.player.playlist('GYM', ['C','A','B']);
     await h.player.playTrack('A');
-    assert.deepEqual(h.player.queueSnapshot(), ['C','A','B']);
+    assert.deepEqual(Array.from(h.player.queueSnapshot()), ['C','A','B']);
     await h.actions.nexttrack();
     assert.equal(h.player.state().currentTrackId, 'B');
   }
@@ -270,7 +270,7 @@ if (require.main === module) (async () => {
     await h.player.playTrack('B');
     assert.equal(h.player.queueSnapshot()[0], 'B', 'Shuffle starts with the selected song');
     h.player.toggleShuffle();
-    assert.deepEqual(h.player.queueSnapshot(), ['A','B','C'], 'Disabling Shuffle restores displayed order');
+    assert.deepEqual(Array.from(h.player.queueSnapshot()), ['A','B','C'], 'Disabling Shuffle restores displayed order');
     await h.actions.nexttrack();
     assert.equal(h.player.state().currentTrackId, 'C');
   }
