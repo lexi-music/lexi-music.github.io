@@ -833,6 +833,8 @@
     pendingTrackId = null;
     playbackLoading = false;
     els.audio.pause();
+    playbackConfirmed = false;
+    updatePlayButton();
   }
 
   function releaseAudioSource() {
