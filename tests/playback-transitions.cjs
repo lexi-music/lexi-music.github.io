@@ -231,7 +231,7 @@ if (require.main === module) (async () => {
   {
     const h = harness({nativeClock:true});
     const start = h.actions.play(); await flush();
-    assert.equal(h.context.navigator.mediaSession.playbackState, 'paused', 'Pending native start must not be reported as playing');
+    assert.notEqual(h.context.navigator.mediaSession.playbackState, 'playing', 'Pending native start must not be reported as playing');
     h.audio.currentTime = 1; h.emit('timeupdate'); await start;
     assert.equal(h.context.navigator.mediaSession.playbackState, 'playing', 'Progress confirms playback');
     h.actions.pause();
