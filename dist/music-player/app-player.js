@@ -64,6 +64,7 @@
   let currentArtworkUrl = null;
   let currentArtworkMime = 'image/jpeg';
   let queue = [];
+  let queueOrder = [];
   let shuffle = true;
   let repeatMode = 'all';
   let dialogTrackIds = [];
@@ -538,6 +539,7 @@
       }
       cleanupCollections(removed);
       queue = queue.filter(id => !removed.includes(id));
+      queueOrder = queueOrder.filter(id => !removed.includes(id));
 
       for (const file of incoming) {
         const old = oldMap.get(file.id);
@@ -785,11 +787,31 @@
     let ids = currentTracks().map(track => track.id);
     if (!ids.includes(trackId)) ids = library.map(track => track.id);
     const rest = ids.filter(id => id !== trackId);
-    queue = [trackId, ...(shuffle ? shuffled(rest) : rest)];
+    queueOrder = [...ids];
+    queue = shuffle ? [trackId, ...shuffled(rest)] : [...ids];
   }
 
   function queueIndex() {
     return queue.indexOf(currentTrackId);
+  }
+
+  function toggleShuffle() {
+    clearPrefetch();
+    shuffle = !shuffle;
+    els.shuffleBtn.setAttribute('aria-pressed', String(shuffle));
+    if (!currentTrackId) return;
+    if (shuffle) {
+      const index = queueIndex();
+      const history = index >= 0 ? queue.slice(0, index + 1) : [currentTrackId];
+      const future = index >= 0 ? queue.slice(index + 1) : [];
+      queue = [...history, ...shuffled(future)];
+    } else {
+      // Restore the order captured when playback started, not the shuffled history.
+      const available = new Set(library.map(track => track.id));
+      const ordered = queueOrder.filter(id => available.has(id));
+      if (ordered.includes(currentTrackId)) queue = ordered;
+    }
+    if (!playbackLoading) warmNextTrack();
   }
 
   async function sourceForTrack(track, signal) {
@@ -914,6 +936,10 @@
       const previousUrl = currentObjectUrl;
       currentObjectUrl = source.url;
       currentTrackId = id;
+      // Never publish the previous track's artwork with the new track title.
+      currentArtworkUrl = null;
+      currentArtworkMime = 'image/jpeg';
+      updateMediaSession(track, null);
       // Reuse the original user-authorized element. A prepared download must
       // request native playback in this Media Session callback, before UI work.
       playbackConfirmed = false;
@@ -932,7 +958,6 @@
       els.nowStatus.textContent = source.stale ? 'Playing saved older copy' : source.offline ? 'Playing offline' : 'Playing from Drive';
       els.player.classList.remove('hidden');
       updatePlayerFavoriteButton();
-      updateMediaSession(track);
       render();
       // Publish artwork independently of a pending native play promise.
       const parse = source.artwork || (source.stale && window.MusicMetadata?.parse
@@ -1343,17 +1368,7 @@
       render();
     });
 
-    els.shuffleBtn.addEventListener('click', () => {
-      clearPrefetch();
-      shuffle = !shuffle;
-      els.shuffleBtn.setAttribute('aria-pressed', String(shuffle));
-      if (currentTrackId) {
-        const index = queueIndex();
-        const history = index >= 0 ? queue.slice(0, index + 1) : [currentTrackId];
-        const future = index >= 0 ? queue.slice(index + 1) : [];
-        queue = [...history, ...(shuffle ? shuffled(future) : future)];
-      }
-    });
+    els.shuffleBtn.addEventListener('click', toggleShuffle);
 
     els.selectBtn.addEventListener('click', () => setSelectionMode(!selectionMode));
     els.bulkSelectAllBtn?.addEventListener('click', selectAllVisible);
@@ -1411,6 +1426,7 @@
       deleteLibraryTrack(id);
       cleanupCollections([id]);
       queue = queue.filter(item => item !== id);
+      queueOrder = queueOrder.filter(item => item !== id);
       if (id === currentTrackId) { currentTrackId = null; releaseAudioSource(); els.player.classList.add('hidden'); }
     })
   });

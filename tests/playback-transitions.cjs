@@ -49,14 +49,19 @@ function harness({ nativeClock = false } = {}) {
   assert(source.includes(marker));
   const hook = `
     library = ['A','B','C'].map(id => ({id, name:id}));
-    currentTrackId = 'A'; queue = ['A','B','C']; shuffle = false;
+    currentTrackId = 'A'; queue = ['A','B','C']; queueOrder = ['A','B','C']; shuffle = false;
     offlineIds = new Set(['A','B','C']);
     render = () => {};
     applyEmbeddedMetadata = async () => ({});
     ${nativeClock ? '' : "startNativePlayback = signal => withPlaybackDeadline(() => els.audio.play(), signal, 'Playback timed out');"}
     installMediaControls();
     window.testPlayer = {
-      playTrack, resumePlayback, pausePlayback,
+      playTrack, resumePlayback, pausePlayback, toggleShuffle,
+      queueSnapshot() { return [...queue]; },
+      view(value) { currentView = value; },
+      playlist(name, ids) { playlists[name] = [...ids]; },
+      artwork(url) { currentArtworkUrl = url; currentArtworkMime = 'image/jpeg'; },
+      parser(fn) { applyEmbeddedMetadata = fn; },
       source(fn) { sourceForTrack = fn; },
       prepare(id) { prefetched = {id, source:{url:id+'.mp3',offline:true,blob:new Blob(['audio'])}}; },
       warmed() { return prefetched?.id; },
@@ -236,6 +241,59 @@ if (require.main === module) (async () => {
     assert.equal(h.context.navigator.mediaSession.playbackState, 'playing', 'Progress confirms playback');
     h.actions.pause(); h.emit('pause');
     assert.equal(h.context.navigator.mediaSession.playbackState, 'paused', 'Pause clears playback confirmation');
+  }
+  // Shuffle-off must follow the list, including when a track starts in the middle.
+  {
+    const h = harness();
+    h.player.view('ALL');
+    await h.player.playTrack('B');
+    assert.deepEqual(h.player.queueSnapshot(), ['A','B','C'], 'Unshuffled queue must match visible list order');
+    await h.actions.nexttrack();
+    assert.equal(h.player.state().currentTrackId, 'C', 'Next must move to the next visible song');
+    await h.actions.nexttrack();
+    assert.equal(h.player.state().currentTrackId, 'A', 'Repeat all wraps only at the end');
+  }
+  // Playlist order, not library order, must be preserved when Shuffle is off.
+  {
+    const h = harness();
+    h.player.playlist('GYM', ['C','A','B']);
+    await h.player.playTrack('A');
+    assert.deepEqual(h.player.queueSnapshot(), ['C','A','B']);
+    await h.actions.nexttrack();
+    assert.equal(h.player.state().currentTrackId, 'B');
+  }
+  // Switching Shuffle off during playback restores the original sequence.
+  {
+    const h = harness();
+    h.player.view('ALL');
+    h.player.toggleShuffle();
+    await h.player.playTrack('B');
+    assert.equal(h.player.queueSnapshot()[0], 'B', 'Shuffle starts with the selected song');
+    h.player.toggleShuffle();
+    assert.deepEqual(h.player.queueSnapshot(), ['A','B','C'], 'Disabling Shuffle restores displayed order');
+    await h.actions.nexttrack();
+    assert.equal(h.player.state().currentTrackId, 'C');
+  }
+  // A lock-screen Next must never show the old song's cover with the new title.
+  {
+    const h = harness(), parsed = deferred();
+    h.player.artwork('blob:old-song-cover');
+    h.context.navigator.mediaSession.metadata = { title: 'A', artwork: [{src:'blob:old-song-cover'}] };
+    h.player.parser(() => parsed.promise);
+    const skip = h.actions.nexttrack();
+    await flush();
+    const session = h.context.navigator.mediaSession;
+    assert.equal(session.metadata.title, 'B', 'Target title is published at source handoff');
+    assert.deepEqual(Array.from(session.metadata.artwork), [], 'Old artwork must be cleared while new art loads');
+    h.emit('playing');
+    assert.deepEqual(Array.from(session.metadata.artwork), [], 'Native playing must not reintroduce old artwork');
+    await skip;
+    parsed.resolve({artwork:{mime:'image/png',bytes:new Uint8Array([137,80,78,71])}});
+    await flush();
+    assert.equal(session.metadata.title, 'B');
+    assert.equal(session.metadata.artwork.length, 1, 'New cover is published when parsed');
+    assert.match(session.metadata.artwork[0].src, /^blob:/);
+    assert.notEqual(session.metadata.artwork[0].src, 'blob:old-song-cover');
   }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });
