@@ -55,6 +55,8 @@ function harness({ nativeClock = false } = {}) {
     applyEmbeddedMetadata = async () => ({});
     ${nativeClock ? '' : "startNativePlayback = signal => withPlaybackDeadline(() => els.audio.play(), signal, 'Playback timed out');"}
     installMediaControls();
+    // The fixture bypasses bindEvents(), so explicitly connect the real near-end handler.
+    els.audio.addEventListener('timeupdate', bridgeHiddenNaturalEnd);
     window.testPlayer = {
       playTrack, resumePlayback, pausePlayback, toggleShuffle,
       queueSnapshot() { return [...queue]; },
@@ -294,6 +296,65 @@ if (require.main === module) (async () => {
     assert.equal(session.metadata.artwork.length, 1, 'New cover is published when parsed');
     assert.match(session.metadata.artwork[0].src, /^blob:/);
     assert.notEqual(session.metadata.artwork[0].src, 'blob:old-song-cover');
+  }
+  // Regression: iOS hidden natural completion dropped the native audio session.
+  // The preloaded next song must take over *before* ended / pause, with no SW fetch.
+  {
+    const h = harness({nativeClock:true});
+    let src='A.mp3';
+    Object.defineProperty(h.audio,'src',{get:()=>src,set(value){src=value;h.audio.currentTime=0;h.audio.ended=false;}});
+    const first=h.player.playTrack('A',true);await flush();
+    h.audio.currentTime=.5;h.emit('timeupdate');await first;
+    h.context.document.hidden=true;
+    h.context.document.visibilityState='hidden';
+    h.audio.duration=106.5;
+    h.player.prepare('B');
+    h.audio.currentTime=106.1;
+    h.emit('timeupdate');
+    assert.equal(h.player.state().currentTrackId,'B','Hidden near-end must immediately hand off to the prepared next song');
+    assert.match(src,/^blob:/,'Hidden handoff must not fetch local-media-url through a suspended service worker');
+    h.audio.currentTime=.5;h.emit('timeupdate');await flush();
+    assert.equal(h.player.state().playbackLoading,false);
+    assert.equal(h.audio.paused,false);
+    assert.equal(h.player.state().wantsPlayback,true);
+    assert.equal(h.player.state().currentTrackId,'B','No duplicate auto-advance is allowed');
+    h.actions.pause();
+  }
+  // A non-prepared next item must not jump ahead or drop the current song.
+  {
+    const h=harness({nativeClock:true});
+    const first=h.player.playTrack('A',true);await flush();
+    h.audio.currentTime=.5;h.emit('timeupdate');await first;
+    h.context.document.hidden=true;h.audio.duration=106.5;
+    h.player.prepare('C');h.audio.currentTime=106.1;h.emit('timeupdate');
+    assert.equal(h.player.state().currentTrackId,'A');
+    h.actions.pause();h.emit('timeupdate');
+    assert.equal(h.player.state().currentTrackId,'A','Pause must not trigger a delayed auto-skip');
+  }
+  // Repeat-one must continue on the active element, without pause/ended or reloading.
+  {
+    const h=harness({nativeClock:true});
+    const first=h.player.playTrack('A',true);await flush();
+    h.audio.currentTime=.5;h.emit('timeupdate');await first;
+    h.player.repeat('one');h.context.document.hidden=true;h.audio.duration=106.5;
+    const oldSrc=h.audio.src;h.audio.currentTime=106.1;h.emit('timeupdate');
+    assert.equal(h.audio.currentTime,0);
+    assert.equal(h.audio.src,oldSrc);
+    assert.equal(h.player.state().currentTrackId,'A');
+    assert.equal(h.audio.paused,false);
+    h.actions.pause();
+  }
+  // Already-stalled hidden native start: user Next uses the stored blob in the
+  // same player generation, not the service-worker URL or a second play loop.
+  {
+    const h=harness({nativeClock:true});
+    h.context.document.hidden=true;h.audio.currentTime=0;h.audio.readyState=1;
+    h.player.prepare('B');
+    const next=h.actions.nexttrack();await flush();
+    assert.match(h.audio.src,/^blob:/);
+    h.audio.currentTime=.5;h.emit('timeupdate');await next;
+    assert.equal(h.player.state().currentTrackId,'B');
+    assert.equal(h.player.state().playbackLoading,false);
   }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });

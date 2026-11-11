@@ -77,6 +77,7 @@
   let pendingTrackId = null;
   let playbackLoading = false;
   let wantsPlayback = false;
+  let continuousHandoffGeneration = -1;
   let prefetched = null;
   let dataOperations = Promise.resolve();
   let dataBusy = false;
@@ -933,6 +934,16 @@
         tracePlayback('source-read-complete');
       }
       if (generation !== playbackGeneration || !wantsPlayback) return null;
+      // In a hidden iOS PWA the local-media service worker can stop supplying
+      // bytes once the prior native session has ended or stalled. For this
+      // specific recovery handoff, use the already-read download directly.
+      // Never run an independent recovery play() or change another generation's src.
+      if (document.hidden && source.offline && source.blob &&
+          (els.audio.ended || (!playbackConfirmed && els.audio.currentTime < 0.1 && els.audio.readyState < 3)) &&
+          !source.url.startsWith('blob:')) {
+        source.url = audioObjectUrl(source.blob);
+        tracePlayback('background-blob-source');
+      }
       const previousUrl = currentObjectUrl;
       currentObjectUrl = source.url;
       currentTrackId = id;
@@ -1172,6 +1183,37 @@
     if (candidates.length) setStatus('No playable songs in this queue', 'Download the songs or tap Refresh to connect Google Drive.');
   }
 
+  // iOS can suspend the local-media fetch pipeline after the audio element
+  // emits pause/ended while the app is hidden. Handoff the *prepared* next
+  // download just before natural completion, while the authorized native
+  // element is still playing. Leave normal visible and unprepared ends alone.
+  function bridgeHiddenNaturalEnd() {
+    if (!document.hidden || playbackLoading || !wantsPlayback || !playbackConfirmed ||
+        els.audio.paused || els.audio.ended || seekDragging) return;
+    const duration = els.audio.duration;
+    if (!Number.isFinite(duration) || duration < 4 ||
+        duration - els.audio.currentTime > 0.65 || duration <= els.audio.currentTime ||
+        continuousHandoffGeneration === playbackGeneration) return;
+    if (repeatMode === 'one') {
+      continuousHandoffGeneration = playbackGeneration;
+      tracePlayback('background-continuous-repeat-one');
+      els.audio.currentTime = 0;
+      return;
+    }
+    const index = queue.indexOf(currentTrackId);
+    const id = index < 0 ? null : queue[index + 1] || (repeatMode === 'all' ? queue[0] : null);
+    if (!id || id === currentTrackId || prefetched?.id !== id || !prefetched.source) return;
+    // Avoid a fresh service-worker media fetch after background audio focus is lost.
+    // The source bytes are already available from our single-song prefetch.
+    if (prefetched.source.offline && prefetched.source.blob && !prefetched.source.url.startsWith('blob:')) {
+      prefetched.source.url = audioObjectUrl(prefetched.source.blob);
+      tracePlayback('background-prepared-blob-source');
+    }
+    continuousHandoffGeneration = playbackGeneration;
+    tracePlayback('background-continuous-handoff');
+    nextTrack(true);
+  }
+
   function nextTrack(auto = false) { return advanceTrack(1, auto); }
   function prevTrack(system = false) {
     if (!system && !playbackLoading && els.audio.currentTime > 3) { els.audio.currentTime = 0; return; }
@@ -1392,6 +1434,7 @@
     els.audio.addEventListener('pause', () => { playbackConfirmed = false; updatePlayButton(); });
     els.audio.addEventListener('ended', () => { if (!playbackLoading && wantsPlayback && els.audio.ended) nextTrack(true); });
     els.audio.addEventListener('timeupdate', () => {
+      bridgeHiddenNaturalEnd();
       if (seekDragging || !Number.isFinite(els.audio.duration) || els.audio.duration <= 0) return;
       els.seek.value = Math.round((els.audio.currentTime / els.audio.duration) * 1000);
     });
