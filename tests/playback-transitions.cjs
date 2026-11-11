@@ -13,7 +13,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function harness({ nativeClock = false } = {}) {
   const timers = new Map(); let timerId = 0;
   const listeners = new Map();
-  const actions = {}, requests = [], prepared = [], nodes = new Map(), storage = new Map();
+  const actions = {}, requests = [], prepared = [], traces = [], nodes = new Map(), storage = new Map();
   const audio = {
     src: 'A.mp3', readyState: 4, error: null, paused: true, currentTime: 0,
     addEventListener(type, callback) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(callback); },
@@ -40,7 +40,8 @@ function harness({ nativeClock = false } = {}) {
     window: {
       matchMedia: () => ({ matches: false }), dispatchEvent() {},
       LexiAudioStorage: { ready: Promise.resolve(), get: async id => ({ id, blob: new Blob(['audio']) }) },
-      LexiMusicDeck: { canActivate: () => false, activate: () => false, clear() {}, prepare: id => prepared.push(id) }
+      LexiMusicDeck: { canActivate: () => false, activate: () => false, clear() {}, prepare: id => prepared.push(id) },
+      LexiMusicDiagnostics: {record: (stage,context) => traces.push({stage,...context})}
     }
   });
   // Run the actual player closure, replacing only startup with an isolated fixture.
@@ -75,7 +76,7 @@ function harness({ nativeClock = false } = {}) {
   vm.runInContext(source.replace(marker, hook + marker), context);
   const player = context.window.testPlayer;
   player.source(async track => { requests.push(track.id); return { url: track.id + '.mp3', offline: true, blob: new Blob(['audio']) }; });
-  return { player, audio, actions, requests, prepared, nodes, context,
+  return { player, audio, actions, requests, prepared, nodes, traces, context,
     emit(type) { for (const fn of [...(listeners.get(type) || [])]) fn(); },
     expire(ms) { for (const [id, timer] of [...timers]) { if (timer.ms === ms) { timers.delete(id); timer.fn(); } } }
   };
@@ -355,6 +356,27 @@ if (require.main === module) (async () => {
     h.audio.currentTime=.5;h.emit('timeupdate');await next;
     assert.equal(h.player.state().currentTrackId,'B');
     assert.equal(h.player.state().playbackLoading,false);
+  }
+  // Instrumentation must report real transition decisions without exposing IDs.
+  {
+    const h=harness({nativeClock:true});
+    const first=h.player.playTrack('A',true);await flush();
+    h.audio.currentTime=.5;h.emit('timeupdate');await first;
+    h.context.document.hidden=true;h.audio.duration=106.5;
+    h.player.prepare('C');
+    h.audio.currentTime=106.1;h.emit('timeupdate');
+    const missed=h.traces.find(e=>e.stage==='background-near-end-unprepared');
+    assert(missed && missed.prefetchReady === true,'Near-end trace must identify prepared wrong item');
+    assert.equal(missed.queueIndex,0);
+    assert.equal(missed.repeat,'all');
+    const next=h.actions.nexttrack();await flush();
+    const transition=h.traces.find(e=>e.stage==='transition-requested'&&e.auto===false);
+    assert.equal(transition.direction,1);
+    assert.equal(transition.queueSize,3);
+    assert.equal(transition.targetIndex,undefined);
+    assert.equal(JSON.stringify(h.traces).includes('PRIVATE_TOKEN'),false);
+    h.audio.currentTime=.5;h.emit('timeupdate');await next;
+    assert(h.traces.some(e=>e.stage==='native-progress-confirmed'));
   }
   console.log('PASS: pending skip + Play, pause/start/resume prefetch, failed resume, late resolution/rejection after pause/skip, repeated Play, retained current song, source deadline, native clock stall/deadline/retry');
 })().catch(error => { console.error(error); process.exitCode = 1; });
