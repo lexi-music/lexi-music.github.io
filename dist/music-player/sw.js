@@ -2,7 +2,7 @@
 importScripts('./offline-audio.js?v=1');
 const CACHE_PREFIX = 'music-shell-';
 const CACHE = 'music-shell-v104-release-v1.09';
-const SHELL = ['./full-test-loader.js?v=19', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=4', './offline-audio.js?v=1', './playback-diagnostics.js?v=10', './media-session-next-guard.js?v=1', './', './styles.css?v=21', './app-player.js?v=16', './ios-background-stall-recovery.js?v=4', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=3', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
+const SHELL = ['./full-test-loader.js?v=20', './sample-one.wav', './sample-two.wav', './icon.png', './lexi-music-icon.png?v=1', './audio-deck.js?v=4', './offline-audio.js?v=1', './playback-diagnostics.js?v=10', './media-session-next-guard.js?v=1', './', './styles.css?v=21', './app-player.js?v=16', './ios-background-stall-recovery.js?v=4', './audio-storage-player.js?v=1', './metadata.js?v=1', './player-settings.js?v=3', './playlist-enhancements.js?v=7', './now-playing-fullscreen-v3.js?v=2', './manifest.json?v=3', './reset.html'];
 function navigationResponse(response) {
   if (!response.redirected) return response;
   const headers = new Headers(response.headers);
@@ -11,7 +11,7 @@ function navigationResponse(response) {
   return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
 }
 const ALIASES = {
-  'full-test-loader.js': './full-test-loader.js?v=19',
+  'full-test-loader.js': './full-test-loader.js?v=20',
   'audio-deck.js': './audio-deck.js?v=4',
   'playback-diagnostics.js': './playback-diagnostics.js?v=10',
   'media-session-next-guard.js': './media-session-next-guard.js?v=1',
