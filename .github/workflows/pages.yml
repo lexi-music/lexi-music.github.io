@@ -27,6 +27,8 @@ jobs:
         run: node tests/navigation-redirect.cjs
       - name: Verify library preservation and accepted playback modules
         run: node tests/drive-enable.cjs
+      - name: Verify private long-running playback diagnostics and device test markers
+        run: node tests/playback-diagnostics.cjs
       - name: Verify play, pause and skip transitions
         run: node tests/playback-transitions.cjs
       - name: Verify lock-screen Next burst guard
