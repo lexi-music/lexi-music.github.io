@@ -2,7 +2,7 @@ const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/st
 const source=fs.readFileSync('dist/music-player/playback-diagnostics.js','utf8');
 const storage=new Map([['lexiMusicPlaybackDiagnosticsV1',JSON.stringify([{at:'2026-01-01T00:00:00Z',stage:'prior-release-evidence'}])]]);
 const audioListeners=new Map(),docListeners=new Map(),winListeners=new Map(),buttons=new Map();
-let now=Date.UTC(2026,10,11),exports=[],closes=0;
+let now=Date.UTC(2026,10,11),sharedLogs=[],closes=0;
 const on=(map,type,fn)=>{if(!map.has(type))map.set(type,[]);map.get(type).push(fn)};
 const emit=(map,type)=>{for(const f of map.get(type)||[])f()};
 class FakeDate extends Date {
@@ -46,7 +46,7 @@ const context=vm.createContext({
  location:{origin:'https://lexi-music.github.io'},
  navigator:{
    onLine:true,userAgent:'fixture-iPhone',mediaSession:{playbackState:'playing'},
-   canShare:()=>true,share:async ({files})=>exports.push(JSON.parse(files[0].content))
+   canShare:()=>true,share:async ({files})=>sharedLogs.push(JSON.parse(files[0].content))
  },
  document:{
    hidden:false,visibilityState:'visible',documentElement:{dataset:{appVersion:'v1.10'}},
@@ -101,25 +101,25 @@ assert.equal(buttons.get('startPlaybackTest').type,'button');
  await buttons.get('lexiAudioSilent').click();
  assert.equal(records().at(-1).stage,'user:silent','Keep v1.09 symptom marker');
  await buttons.get('sharePlaybackLog').click();
- assert.equal(exports.length,1);
- assert.equal(exports[0].diagnosticsBuild,'v3');
- assert.equal(exports[0].appVersion,'v1.10');
- assert.equal(exports[0].summary.result,'stopped');
- assert.equal(exports[0].summary.playbackFailures,1);
- assert.equal(exports[0].summary.naturalEnds,1);
- assert.equal(exports[0].summary.preEndHandoffs,1);
- assert.equal(exports[0].summary.backgroundReturns,1);
- assert(exports[0].events.some(e=>e.stage==='prior-release-evidence'));
- assert(!JSON.stringify(exports[0]).includes('PRIVATE_'),'No identifiers/secrets may be exported');
+ assert.equal(sharedLogs.length,1);
+ assert.equal(sharedLogs[0].diagnosticsBuild,'v3');
+ assert.equal(sharedLogs[0].appVersion,'v1.10');
+ assert.equal(sharedLogs[0].summary.result,'stopped');
+ assert.equal(sharedLogs[0].summary.playbackFailures,1);
+ assert.equal(sharedLogs[0].summary.naturalEnds,1);
+ assert.equal(sharedLogs[0].summary.preEndHandoffs,1);
+ assert.equal(sharedLogs[0].summary.backgroundReturns,1);
+ assert(sharedLogs[0].events.some(e=>e.stage==='prior-release-evidence'));
+ assert(!JSON.stringify(sharedLogs[0]).includes('PRIVATE_'),'No identifiers/secrets may be exported');
  await buttons.get('startPlaybackTest').click();
  diag.record('transition-requested',{auto:true,direction:1});
  diag.record('play-resolved');
  await buttons.get('lexiAudioAudible').click();
  await buttons.get('sharePlaybackLog').click();
- assert.equal(exports[1].summary.result,'worked');
- assert.equal(exports[1].summary.automaticTransitions,1);
- assert.equal(exports[1].summary.playbackStartsConfirmed,1);
- assert.equal(exports[1].summary.playbackFailures,0,'Summary only the latest test');
+ assert.equal(sharedLogs[1].summary.result,'worked');
+ assert.equal(sharedLogs[1].summary.automaticTransitions,1);
+ assert.equal(sharedLogs[1].summary.playbackStartsConfirmed,1);
+ assert.equal(sharedLogs[1].summary.playbackFailures,0,'Summary only the latest test');
  emit(winListeners,'pagehide');
  assert.equal(records().at(-1).stage,'pagehide');
  console.log('PASS: v1.09 symptom markers/stall signals preserved; v1.10 passive diagnostics, privacy, sparse progress, hidden-return, test markers, export summary, old evidence');
