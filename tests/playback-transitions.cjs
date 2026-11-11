@@ -55,6 +55,8 @@ function harness({ nativeClock = false } = {}) {
     applyEmbeddedMetadata = async () => ({});
     ${nativeClock ? '' : "startNativePlayback = signal => withPlaybackDeadline(() => els.audio.play(), signal, 'Playback timed out');"}
     installMediaControls();
+    // The fixture bypasses bindEvents(), so explicitly connect the real near-end handler.
+    els.audio.addEventListener('timeupdate', bridgeHiddenNaturalEnd);
     window.testPlayer = {
       playTrack, resumePlayback, pausePlayback, toggleShuffle,
       queueSnapshot() { return [...queue]; },
