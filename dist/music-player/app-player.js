@@ -78,6 +78,7 @@
   let playbackLoading = false;
   let wantsPlayback = false;
   let continuousHandoffGeneration = -1;
+  let lastUnpreparedHandoffGeneration = -1; // Diagnostics only; never gates playback.
   let prefetched = null;
   let dataOperations = Promise.resolve();
   let dataBusy = false;
@@ -849,6 +850,7 @@
   }
 
   function pausePlayback() {
+    tracePlayback('pause-requested');
     wantsPlayback = false;
     playbackGeneration += 1;
     playbackAbort?.abort();
@@ -867,7 +869,23 @@
     currentObjectUrl = null;
   }
 
-  function tracePlayback(stage) { window.LexiMusicDiagnostics?.record(stage); }
+  function tracePlayback(stage, details = {}) {
+    // Identifiers, titles, URLs, credentials and file contents never enter logs.
+    window.LexiMusicDiagnostics?.record(stage, {
+      generation: playbackGeneration,
+      queueIndex: queue.indexOf(currentTrackId),
+      queueSize: queue.length,
+      repeat: repeatMode,
+      shuffle,
+      loading: playbackLoading,
+      confirmed: playbackConfirmed,
+      wants: wantsPlayback,
+      pending: !!pendingTrackId,
+      prefetched: !!prefetched,
+      prefetchReady: !!prefetched?.source,
+      ...details
+    });
+  }
   function clearPrefetch() {
     if (prefetched?.source?.url && prefetched.source.url !== currentObjectUrl) URL.revokeObjectURL(prefetched.source.url);
     prefetched = null;
@@ -907,8 +925,8 @@
     const track = library.find(item => item.id === id);
     if (!track) return false;
     if (!preserveQueue) buildQueue(id);
-    tracePlayback('track-request');
     const generation = ++playbackGeneration;
+    tracePlayback('track-request', {targetIndex: queue.indexOf(id), targetOffline: offlineIds.has(id)});
     playbackAbort?.abort();
     const controller = new AbortController();
     playbackAbort = controller;
@@ -1083,6 +1101,7 @@
       const progress = () => {
         if (advanced()) {
           playbackConfirmed = true;
+          tracePlayback('native-progress-confirmed');
           updatePlayButton();
           finish();
         }
@@ -1114,6 +1133,7 @@
     if (!currentTrackId || !els.audio.src) return playTrack(currentTrackId || library[0]?.id, !!currentTrackId);
     if (els.audio.readyState < 3 || els.audio.error) return playTrack(currentTrackId, true);
     const generation = playbackGeneration;
+    tracePlayback('resume-requested');
     const controller = new AbortController();
     playbackAbort = controller;
     wantsPlayback = true;
@@ -1124,9 +1144,11 @@
     try {
       await startNativePlayback(controller.signal);
       if (generation !== playbackGeneration) return;
+      tracePlayback('resume-confirmed');
       warmNextTrack();
     } catch (error) {
       if (generation !== playbackGeneration) return;
+      tracePlayback('resume-failed');
       controller.abort();
       els.audio.pause();
       wantsPlayback = false;
@@ -1158,6 +1180,7 @@
   }
 
   async function advanceTrack(direction, auto = false) {
+    tracePlayback('transition-requested', {direction, auto});
     queue = queue.filter(id => library.some(track => track.id === id));
     if (!queue.length) return;
     const anchor = pendingTrackId || currentTrackId;
@@ -1180,7 +1203,10 @@
       const result = await playTrack(id, true);
       if (result === true || result === null) return;
     }
-    if (candidates.length) setStatus('No playable songs in this queue', 'Download the songs or tap Refresh to connect Google Drive.');
+    if (candidates.length) {
+      tracePlayback('transition-exhausted', {direction, auto});
+      setStatus('No playable songs in this queue', 'Download the songs or tap Refresh to connect Google Drive.');
+    }
   }
 
   // iOS can suspend the local-media fetch pipeline after the audio element
@@ -1202,7 +1228,13 @@
     }
     const index = queue.indexOf(currentTrackId);
     const id = index < 0 ? null : queue[index + 1] || (repeatMode === 'all' ? queue[0] : null);
-    if (!id || id === currentTrackId || prefetched?.id !== id || !prefetched.source) return;
+    if (!id || id === currentTrackId || prefetched?.id !== id || !prefetched.source) {
+      if (lastUnpreparedHandoffGeneration !== playbackGeneration) {
+        lastUnpreparedHandoffGeneration = playbackGeneration;
+        tracePlayback('background-near-end-unprepared');
+      }
+      return;
+    }
     // Avoid a fresh service-worker media fetch after background audio focus is lost.
     // The source bytes are already available from our single-song prefetch.
     if (prefetched.source.offline && prefetched.source.blob && !prefetched.source.url.startsWith('blob:')) {
@@ -1432,7 +1464,7 @@
 
     els.audio.addEventListener('play', updatePlayButton);
     els.audio.addEventListener('pause', () => { playbackConfirmed = false; updatePlayButton(); });
-    els.audio.addEventListener('ended', () => { if (!playbackLoading && wantsPlayback && els.audio.ended) nextTrack(true); });
+    els.audio.addEventListener('ended', () => { tracePlayback('natural-end'); if (!playbackLoading && wantsPlayback && els.audio.ended) nextTrack(true); });
     els.audio.addEventListener('timeupdate', () => {
       bridgeHiddenNaturalEnd();
       if (seekDragging || !Number.isFinite(els.audio.duration) || els.audio.duration <= 0) return;

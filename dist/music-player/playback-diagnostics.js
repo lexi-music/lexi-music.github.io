@@ -1,7 +1,12 @@
 (() => {
  'use strict';
  // Diagnostic-only release. Never changes audio source, transport, downloads or authorization.
- const KEY='lexiMusicPlaybackDiagnosticsV1', LIMIT=450;
+ const KEY='lexiMusicPlaybackDiagnosticsV1', LIMIT=1600;
+ // Long locked-screen runs must retain the failure, not overwrite it with 3-second samples.
+ const PROGRESS_INTERVAL_MS=45000;
+ const SAFE_CONTEXT=new Set(['generation','queueIndex','targetIndex','queueSize','repeat','shuffle','loading',
+   'confirmed','wants','pending','prefetched','prefetchReady','auto','direction','targetOffline',
+   'hiddenDurationMs','noProgressMs','hiddenForSec','playheadDelta','wasPlaying']);
  let records=[];
  try { const saved=JSON.parse(localStorage.getItem(KEY)||'[]'); if(Array.isArray(saved))records=saved.slice(-LIMIT); } catch (_) {}
  const audio=window.LexiMusicAudio||document.getElementById('audio');
@@ -36,12 +41,35 @@
        error:audio.error?.code||0
      });
    }
-   if(extra)Object.assign(entry,extra);
+   // Whitelist context from the player: never export track/file IDs, song names or credentials.
+   for(const [key,value] of Object.entries(extra||{})) {
+     if(!SAFE_CONTEXT.has(key))continue;
+     if(typeof value==='boolean'||(typeof value==='number'&&Number.isFinite(value))||
+       (key==='repeat'&&['off','all','one'].includes(value)))entry[key]=value;
+   }
    records.push(entry);
    if(records.length>LIMIT)records=records.slice(-LIMIT);
    try{localStorage.setItem(KEY,JSON.stringify(records))}catch(_){}
  }
- function record(stage){snapshot(String(stage).slice(0,120))}
+ function record(stage,details){snapshot(String(stage).slice(0,120),details)}
+ function summary(){
+   const start=records.map(e=>e.stage).lastIndexOf('test:start');
+   const run=start>=0?records.slice(start):[];
+   const lastOutcome=[...run].reverse().find(e=>e.stage==='user:silent'||e.stage==='user:audible');
+   return {
+     startedAt:run[0]?.at||null,
+     result:lastOutcome?.stage==='user:silent'?'stopped':lastOutcome?.stage==='user:audible'?'worked':
+       run.length?'incomplete':'no-test',
+     automaticTransitions:run.filter(e=>e.stage==='transition-requested'&&e.auto===true).length,
+     preEndHandoffs:run.filter(e=>e.stage==='background-continuous-handoff').length,
+     playbackStartsConfirmed:run.filter(e=>e.stage==='play-resolved'||e.stage==='resume-confirmed').length,
+     playbackFailures:run.filter(e=>e.stage.startsWith('play-failed:')||e.stage==='playback-deadline'||
+       e.stage==='resume-failed').length,
+     naturalEnds:run.filter(e=>e.stage==='audio:ended').length,
+     backgroundReturns:run.filter(e=>e.stage==='background-return').length,
+     noProgressObservations:run.filter(e=>e.stage==='diagnostic:no-media-progress').length
+   };
+ }
  window.LexiMusicDiagnostics=Object.freeze({record});
  if(audio){
    for(const name of ['loadstart','play','playing','pause','ended','waiting','stalled','suspend','canplay','canplaythrough','error','emptied','abort','seeking','seeked','loadedmetadata','ratechange','volumechange']){
@@ -51,14 +79,28 @@
      const now=Date.now(),t=audio.currentTime||0;
      if(lastMediaTime===null||t>lastMediaTime+0.1){lastProgressWall=now;stallReported=false}
      lastMediaTime=t;
-     if(now-lastProgressAt>=3000){lastProgressAt=now;record('audio:progress')}
+     if(now-lastProgressAt>=PROGRESS_INTERVAL_MS){lastProgressAt=now;record('audio:progress')}
    });
  }
- document.addEventListener('visibilitychange',()=>{
-   snapshot('visibility',{hiddenDurationMs:document.visibilityState==='visible'&&lastHiddenAt!==null?Date.now()-lastHiddenAt:null});
-   if(document.visibilityState==='hidden')lastHiddenAt=Date.now();else lastHiddenAt=null;
- });
  let lastHiddenAt=document.visibilityState==='hidden'?Date.now():null;
+ let hiddenBaseline=document.visibilityState==='hidden'&&audio?
+   {at:Date.now(),time:audio.currentTime||0,wasPlaying:!audio.paused&&!audio.ended}:null;
+ document.addEventListener('visibilitychange',()=>{
+   const visible=document.visibilityState==='visible';
+   snapshot('visibility',{hiddenDurationMs:visible&&lastHiddenAt!==null?Date.now()-lastHiddenAt:null});
+   if(!visible){
+     lastHiddenAt=Date.now();
+     hiddenBaseline=audio?{at:Date.now(),time:audio.currentTime||0,wasPlaying:!audio.paused&&!audio.ended}:null;
+   }else{
+     if(hiddenBaseline) snapshot('background-return',{
+       hiddenForSec:Math.round((Date.now()-hiddenBaseline.at)/100)/10,
+       playheadDelta:Math.round(((audio?.currentTime||0)-hiddenBaseline.time)*10)/10,
+       wasPlaying:hiddenBaseline.wasPlaying
+     });
+     hiddenBaseline=null;
+     lastHiddenAt=null;
+   }
+ });
  window.addEventListener('pageshow',()=>record('pageshow'));
  window.addEventListener('pagehide',()=>record('pagehide'));
  window.addEventListener('focus',()=>record('window:focus'));
@@ -76,7 +118,8 @@
  }
  async function share(){
    snapshot('diagnostic:export');
-   const payload={schema:2,diagnosticsBuild:'v2',appVersion:document.documentElement.dataset.appVersion,
+   const payload={schema:2,diagnosticsBuild:'v3',appVersion:document.documentElement.dataset.appVersion,
+     summary:summary(),
      origin:location.origin,userAgent:navigator.userAgent,events:records};
    const file=new File([JSON.stringify(payload,null,2)],'lexi-music-playback-log.json',{type:'application/json'});
    if(navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file]});return}catch(e){if(e.name==='AbortError')return}}
@@ -90,6 +133,11 @@
    const label=document.createElement('div');label.className='settings-section-title';label.textContent='Playback diagnostics';
    const note=document.createElement('p');note.className='help';note.textContent='Mark what you actually hear. These markers only record evidence; they do not control playback.';
    wrap.append(label,note);
+   const start=document.createElement('button');
+   start.id='startPlaybackTest';start.type='button';start.className='button secondary';
+   start.textContent='Start locked-iPhone test';
+   start.addEventListener('click',()=>{record('test:start');dialog.close?.()});
+   wrap.append(start);
    for(const [id,text,stage] of [['lexiAudioAudible','I hear audio','audible'],['lexiAudioSilent','Audio silent / stopped','silent']]){
      const button=document.createElement('button');button.id=id;button.type='button';button.className='button secondary';button.textContent=text;
      button.style.marginRight='8px';button.style.marginBottom='8px';
